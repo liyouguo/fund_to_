@@ -15,12 +15,23 @@ class EmailSender:
     
     def _load_config(self):
         """加载邮件配置"""
+        # 处理SMTP_PORT环境变量为空字符串的情况
+        smtp_port_env = os.environ.get('SMTP_PORT')
+        smtp_port = 465
+        if smtp_port_env and smtp_port_env.strip():
+            try:
+                smtp_port = int(smtp_port_env.strip())
+            except ValueError:
+                # 如果转换失败，使用默认值
+                logger.warning(f"无效的SMTP_PORT值: {smtp_port_env}，使用默认值465")
+                smtp_port = 465
+        
         return {
             'smtp_server': os.environ.get('SMTP_SERVER', 'smtp.qq.com'),
-            'smtp_port': int(os.environ.get('SMTP_PORT', 465)),
+            'smtp_port': smtp_port,
             'smtp_user': os.environ.get('SMTP_USER', ''),
             'smtp_password': os.environ.get('SMTP_PASSWORD', ''),
-            'recipients': os.environ.get('RECIPIENTS', '').split(';') if os.environ.get('RECIPIENTS') else []
+            'recipients': [r.strip() for r in os.environ.get('RECIPIENTS', '').split(';') if r.strip()]
         }
     
     def send_email(self, signal_csv_path, report_date=None):
