@@ -27,103 +27,7 @@ class FundSignalAnalyzer:
     "161005.OF",
     "260108.OF",
     
-    # 半导体/高端制造/业绩驱动
-    "025208.OF",
-    "025209.OF",
-    "016370.OF",
-    "016371.OF",
-    "002112.OF",
-    "001412.OF",
-    "004320.OF",
-    "007113.OF",
-    "007114.OF",
-    "008528.OF",
-    "011452.OF",
-    "011900.OF",
-    "011899.OF",
-    "015576.OF",
-    "005903.OF",
-    "001956.OF",
-    "519618.OF",
-    "003659.OF",
-    "162201.OF",
-    "257070.OF",
-    "001170.OF",
-    "016579.OF",
-    "009025.OF",
-    "009024.OF",
-    "017612.OF",
-    "740001.OF",
-    "020026.OF",
-    "519606.OF",
-    "015593.OF",
-    "018291.OF",
-    "002125.OF",
-    "025499.OF",
-    "025500.OF",
-    "006502.OF",
-    "006503.OF",
-    "001480.OF",
-    "021528.OF",
-    "010237.OF",
-    "011891.OF",
-    "011892.OF",
-    "010238.OF",
-    "006265.OF",
-    "001438.OF",
-    "001437.OF",
-    "006887.OF",
-    "006888.OF",
-    "007382.OF",
-    "014915.OF",
-    "007381.OF",
-    "014916.OF",
-    "025704.OF",
-    "005967.OF",
-    "519005.OF",
-    "016773.OF",
-    "016772.OF",
-    "010115.OF",
-    "011412.OF",
-    "001753.OF",
-    "020440.OF",
-    "017491.OF",
-    "017490.OF",
-    "020441.OF",
-    "005090.OF",
-    "005091.OF",
-    "016873.OF",
-    "016874.OF",
-    "016013.OF",
-    "009242.OF",
-    "009243.OF",
-    "016014.OF",
-    "010415.OF",
-    "011370.OF",
-    "011369.OF",
-    "010416.OF",
-    "001613.OF",
-    "017462.OF",
-    "018611.OF",
-    "018612.OF",
-    "013250.OF",
-    "021957.OF",
-    "006167.OF",
-    "006168.OF",
-    "009645.OF",
-    "009644.OF",
-    "014023.OF",
-    "290008.OF",
-    "026245.OF",
-    "024459.OF",
-    "024460.OF",
-    "009432.OF",
-    "009433.OF",
-    "018956.OF",
-    "018957.OF",
-    "014191.OF",
-    "014192.OF",
-    "022446.OF"
+    # 半导体/高端制造/
 ]
     
     def __init__(self):
@@ -177,7 +81,42 @@ class FundSignalAnalyzer:
                 logger.debug(f"基金代码{fund_code}去掉后缀后为{base_code}")
                 fund_code = base_code
             
-            # 获取原始数据 - 使用fund_open_fund_daily_em获取当日数据
+            # 尝试使用fund_open_fund_info_em获取历史数据
+            logger.debug(f"尝试使用fund_open_fund_info_em获取基金{fund_code}历史数据")
+            try:
+                # 获取基金历史数据
+                history_df = ak.fund_open_fund_info_em(symbol=fund_code, indicator="单位净值走势")
+                
+                if history_df is not None and not history_df.empty:
+                    logger.debug(f"fund_open_fund_info_em获取成功，共{len(history_df)}条记录")
+                    
+                    # 获取基金基本信息
+                    fund_name, fund_type = self.get_fund_basic_info(fund_code)
+                    
+                    # 添加基金代码、名称和类型
+                    history_df['基金代码'] = fund_code
+                    history_df['基金名称'] = fund_name
+                    history_df['基金类型'] = fund_type
+                    
+                    # 重命名列以匹配原有结构
+                    history_df = history_df.rename(columns={
+                        '单位净值': '最新净值',
+                        '日增长率': '日增长率%'
+                    })
+                    
+                    # 确保日增长率是数值类型
+                    history_df['日增长率%'] = pd.to_numeric(history_df['日增长率%'], errors='coerce')
+                    
+                    logger.info(f"基金{fund_code}历史数据获取成功，共{len(history_df)}条记录")
+                    logger.debug(f"最终数据字段：{list(history_df.columns)}")
+                    
+                    return history_df
+            except Exception as e:
+                logger.error(f"使用fund_open_fund_info_em获取基金{fund_code}历史数据失败：{str(e)}")
+                logger.debug(f"异常详情：{repr(e)}")
+                logger.warning(f"基金{fund_code}遇到JavaScript解析错误，这可能是由于网页结构变化导致的，尝试使用备选方案")
+            
+            # 备选方案：使用fund_open_fund_daily_em获取当日数据
             logger.debug(f"调用akshare获取所有开放基金每日数据")
             df = ak.fund_open_fund_daily_em()
             
@@ -196,25 +135,23 @@ class FundSignalAnalyzer:
             
             logger.debug(f"基金{fund_code}数据筛选成功，共{len(fund_data)}条记录")
             
-            # 由于fund_open_fund_daily_em只返回当日数据，我们需要构建历史数据
-            # 这里我们创建一个简单的数据结构，只包含当日数据
-            # 实际应用中可能需要使用其他API获取历史数据
-            
             # 获取基金基本信息
             logger.debug("获取基金基本信息")
             fund_name, fund_type = self.get_fund_basic_info(fund_code)
             
             # 获取单位净值和累计净值
-            unit_nav = fund_data.iloc[0]['2025-12-31-单位净值']
-            accum_nav = fund_data.iloc[0]['2025-12-31-累计净值']
+            # 动态获取最新净值列名
+            unit_nav_col = [col for col in df.columns if '-单位净值' in col][0]
+            unit_nav = fund_data.iloc[0][unit_nav_col]
             daily_growth = fund_data.iloc[0]['日增长率']
+            
+            # 从列名中提取日期
+            latest_date = unit_nav_col.split('-')[0]
             
             # 创建历史数据结构
             logger.debug("创建历史数据结构")
-            # 由于当前API只能获取当日数据，我们创建一个包含当日数据的DataFrame
-            # 实际应用中应该使用其他API获取完整的历史数据
             history_data = pd.DataFrame({
-                '净值日期': [pd.Timestamp('2025-12-31')],
+                '净值日期': [pd.Timestamp(latest_date)],
                 '最新净值': [float(unit_nav)],
                 '日增长率%': [float(daily_growth)],
                 '基金代码': [fund_code],
@@ -416,6 +353,9 @@ class FundSignalAnalyzer:
         # 格式化日期
         if '净值日期' in output_df.columns:
             logger.debug("格式化净值日期为字符串格式")
+            # 确保净值日期是datetime类型
+            output_df['净值日期'] = pd.to_datetime(output_df['净值日期'], errors='coerce')
+            # 格式化为字符串
             output_df['净值日期'] = output_df['净值日期'].dt.strftime('%Y-%m-%d')
         
         # 添加报告日期
@@ -477,8 +417,23 @@ class FundSignalAnalyzer:
         logger.info(f"待分析基金代码：{fund_codes}")
         
         # 初始化结果存储
-        all_signal_data = []
         results = []
+        
+        # 创建输出目录
+        output_dir = 'output'
+        logger.debug(f"检查输出目录：{output_dir}")
+        if not os.path.exists(output_dir):
+            logger.info(f"创建输出目录：{output_dir}")
+            os.makedirs(output_dir)
+        else:
+            logger.debug(f"输出目录已存在：{output_dir}")
+        
+        # 初始化CSV和Excel文件
+        csv_filename = os.path.join(output_dir, f'信号明细_{self.report_date}.csv')
+        excel_filename = os.path.join(output_dir, f'信号明细_{self.report_date}.xlsx')
+        
+        # 初始化标志，用于判断是否是第一次写入
+        first_write = True
         
         # 开始分析
         start_time = time.time()
@@ -508,8 +463,35 @@ class FundSignalAnalyzer:
                     signal_df = signal_df[signal_df['净值日期'] >= cutoff_date]
                     signal_df['净值日期'] = signal_df['净值日期'].dt.strftime('%Y-%m-%d')
                 
-                all_signal_data.append(signal_df)
-                logger.debug(f"基金{fund_code}信号数据已添加到总列表")
+                # 立即写入信号数据到CSV文件
+                logger.info(f"开始写入基金{fund_code}信号数据到CSV文件")
+                if first_write:
+                    # 第一次写入，包含表头
+                    signal_df.to_csv(csv_filename, index=False, encoding='utf-8-sig')
+                    first_write = False
+                else:
+                    # 后续写入，追加数据，不包含表头
+                    signal_df.to_csv(csv_filename, index=False, encoding='utf-8-sig', mode='a', header=False)
+                logger.debug(f"基金{fund_code}信号数据已写入CSV文件：{csv_filename}")
+                
+                # 立即写入信号数据到Excel文件
+                logger.info(f"开始写入基金{fund_code}信号数据到Excel文件")
+                try:
+                    if os.path.exists(excel_filename):
+                        # 文件已存在，读取现有数据并追加
+                        with pd.ExcelFile(excel_filename, engine='openpyxl') as xls:
+                            existing_df = pd.read_excel(xls, sheet_name='信号明细')
+                        combined_df = pd.concat([existing_df, signal_df], ignore_index=True)
+                    else:
+                        # 文件不存在，直接写入
+                        combined_df = signal_df
+                    
+                    with pd.ExcelWriter(excel_filename, engine='openpyxl') as writer:
+                        combined_df.to_excel(writer, sheet_name='信号明细', index=False)
+                    logger.debug(f"基金{fund_code}信号数据已写入Excel文件：{excel_filename}")
+                except Exception as e:
+                    logger.error(f"写入Excel文件失败：{str(e)}")
+                    logger.debug(f"异常详情：{repr(e)}")
             else:
                 logger.warning(f"基金{fund_code}分析失败，跳过")
             
@@ -527,36 +509,6 @@ class FundSignalAnalyzer:
         if not results:
             logger.error("没有成功分析任何基金，程序退出")
             return False
-        
-        # 合并信号数据
-        logger.info("开始合并所有基金信号数据")
-        logger.debug(f"共有{len(all_signal_data)}个基金的信号数据需要合并")
-        combined_signals = pd.concat(all_signal_data, ignore_index=True)
-        logger.info(f"信号数据合并完成，共{len(combined_signals)}行")
-        
-        # 创建输出目录
-        output_dir = 'output'
-        logger.debug(f"检查输出目录：{output_dir}")
-        if not os.path.exists(output_dir):
-            logger.info(f"创建输出目录：{output_dir}")
-            os.makedirs(output_dir)
-        else:
-            logger.debug(f"输出目录已存在：{output_dir}")
-        
-        # 生成信号CSV文件
-        logger.info("开始生成信号明细CSV文件")
-        csv_filename = os.path.join(output_dir, f'信号明细_{self.report_date}.csv')
-        combined_signals.to_csv(csv_filename, index=False, encoding='utf-8-sig')
-        logger.info(f"信号明细CSV已生成：{csv_filename}")
-        logger.debug(f"CSV文件大小：{os.path.getsize(csv_filename)}字节")
-        
-        # 生成Excel文件
-        logger.info("开始生成信号明细Excel文件")
-        excel_filename = os.path.join(output_dir, f'信号明细_{self.report_date}.xlsx')
-        with pd.ExcelWriter(excel_filename, engine='openpyxl') as writer:
-            combined_signals.to_excel(writer, sheet_name='信号明细', index=False)
-        logger.info(f"信号明细Excel已生成：{excel_filename}")
-        logger.debug(f"Excel文件大小：{os.path.getsize(excel_filename)}字节")
         
         # 发送邮件
         logger.info("开始发送邮件通知")
