@@ -25,7 +25,7 @@ class Logger:
         
         # 控制台处理器
         console_handler = logging.StreamHandler()
-        console_handler.setLevel(logging.INFO)
+        console_handler.setLevel(logging.DEBUG)
         
         # 文件处理器
         file_handler = logging.FileHandler(log_file, encoding='utf-8')

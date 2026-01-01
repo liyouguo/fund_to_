@@ -37,8 +37,8 @@ jobs:
         working-directory: fund_signal_system
         env:
           # 通过Secrets管理敏感信息
-          SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
-          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_SERVER: ${{ secrets.SMTP_SERVER || 'smtp.qq.com' }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT || secrets.SMTP || '465' }}
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           RECIPIENTS: ${{ secrets.RECIPIENTS }}
