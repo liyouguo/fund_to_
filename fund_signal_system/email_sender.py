@@ -138,15 +138,14 @@ class EmailSender:
             msg.attach(MIMEText(html_content, 'html', 'utf-8'))
             
             # 添加附件
-            with open(signal_csv_path, 'rb') as f:
-                attachment = MIMEApplication(f.read())
+            with open(signal_csv_path, 'r', encoding='utf-8-sig') as f:
+                # 使用MIMEText处理CSV文件，因为它是文本文件
+                attachment = MIMEText(f.read(), 'csv', 'utf-8')
                 # 确保文件名正确设置
                 filename = os.path.basename(signal_csv_path)
                 logger.info(f"添加附件：{filename}")
-                # 明确设置Content-Type和编码
-                attachment.set_type('text/csv')
+                # 明确设置Content-Disposition和编码
                 attachment.add_header('Content-Disposition', f'attachment; filename="{filename}"')
-                attachment.add_header('Content-Transfer-Encoding', 'base64')
                 msg.attach(attachment)
             
             # 发送邮件
