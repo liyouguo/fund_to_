@@ -211,8 +211,14 @@ class FundSignalAnalyzer:
             return df
             
         except Exception as e:
-            logger.error(f"获取基金{fund_code}历史数据失败：{str(e)}")
+            error_msg = str(e)
+            logger.error(f"获取基金{fund_code}历史数据失败：{error_msg}")
             logger.debug(f"异常详情：{repr(e)}")
+            
+            # 特别处理akshare的JavaScript解析错误，记录后继续处理其他基金
+            if "Unknown JavaScript error during parse" in error_msg:
+                logger.warning(f"基金{fund_code}遇到JavaScript解析错误，这可能是由于网页结构变化导致的，跳过该基金")
+            
             return None
     
     def calculate_technical_indicators(self, df):
