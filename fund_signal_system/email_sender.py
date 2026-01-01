@@ -77,8 +77,8 @@ class EmailSender:
                 logger.error("收件人列表为空，无法发送邮件")
                 return False
             
-            # 创建邮件
-            msg = MIMEMultipart()
+            # 创建邮件，明确指定subtype为mixed，支持附件
+            msg = MIMEMultipart('mixed')
             
             # 设置邮件主题和发件人
             msg['Subject'] = f"📊 基金布林带策略晨报 - {report_date}"
@@ -134,8 +134,10 @@ class EmailSender:
             </html>
             """
             
-            # 添加正文
-            msg.attach(MIMEText(html_content, 'html', 'utf-8'))
+            # 添加正文，明确设置为内联内容
+            html_part = MIMEText(html_content, 'html', 'utf-8')
+            html_part.add_header('Content-Disposition', 'inline')
+            msg.attach(html_part)
             
             # 添加附件
             with open(signal_csv_path, 'r', encoding='utf-8-sig') as f:
@@ -144,8 +146,9 @@ class EmailSender:
                 # 确保文件名正确设置
                 filename = os.path.basename(signal_csv_path)
                 logger.info(f"添加附件：{filename}")
-                # 明确设置Content-Disposition和编码
+                # 明确设置Content-Disposition和Content-Type
                 attachment.add_header('Content-Disposition', f'attachment; filename="{filename}"')
+                attachment.add_header('Content-Type', 'text/csv; charset=utf-8')
                 msg.attach(attachment)
             
             # 发送邮件
