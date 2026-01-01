@@ -1,0 +1,68 @@
+name: 每日基金分析报告
+
+on:
+  schedule:
+    # 每日09:00运行（北京时间）
+    - cron: '0 1 * * *'
+  workflow_dispatch:
+    # 允许手动触发
+    inputs:
+      days_to_keep:
+        description: '保留数据天数'
+        required: false
+        default: '10'
+
+jobs:
+  analyze-funds:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v3
+
+      - name: 设置Python环境
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+          cache: 'pip'
+
+      - name: 安装依赖
+        run: |
+          pip install -r requirements.txt
+
+      - name: 运行基金分析
+        id: analyze
+        env:
+          # 通过Secrets管理敏感信息
+          SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          RECIPIENTS: ${{ secrets.RECIPIENTS }}
+        run: |
+          python main.py --days ${{ github.event.inputs.days_to_keep || 10 }}
+
+      - name: 上传报告文件
+        uses: actions/upload-artifact@v3
+        with:
+          name: fund-reports
+          path: |
+            output/*.csv
+            output/*.xlsx
+            logs/*.log
+
+      - name: 发送失败通知
+        if: ${{ failure() }}
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.SMTP_SERVER }}
+          server_port: ${{ secrets.SMTP_PORT }}
+          username: ${{ secrets.SMTP_USER }}
+          password: ${{ secrets.SMTP_PASSWORD }}
+          subject: ❌ 基金分析任务失败通知
+          body: |
+            基金分析任务失败，请检查GitHub Actions日志。
+            任务链接: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          to: ${{ secrets.RECIPIENTS }}
+          from: ${{ secrets.SMTP_USER }}
