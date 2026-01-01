@@ -92,17 +92,34 @@ python main.py --days 7 --funds "000001,110022"
 python main.py --test-email
 ```
 
-## 环境变量配置
+## 环境变量配置 
 
-系统使用以下环境变量进行配置：
+系统使用以下环境变量进行配置： 
 
-| 环境变量名          | 描述                | 默认值          |
-|-------------------|---------------------|----------------|
-| SMTP_SERVER       | SMTP服务器地址       | smtp.qq.com    |
-| SMTP_PORT         | SMTP服务器端口       | 465            |
-| SMTP_USER         | SMTP用户名          |                |
-| SMTP_PASSWORD     | SMTP密码            |                |
-| RECIPIENTS        | 收件人列表，用分号分隔 |                |
+| 环境变量名          | 描述                | 默认值          | 
+|-------------------|---------------------|----------------| 
+| SMTP_SERVER       | SMTP服务器地址       | smtp.qq.com    | 
+| SMTP_PORT         | SMTP服务器端口       | 465            | 
+| SMTP_USER         | SMTP用户名          |                | 
+| SMTP_PASSWORD     | SMTP密码            |                | 
+| RECIPIENTS        | 收件人列表，用分号分隔 |                | 
+
+### GitHub Actions Secrets配置 
+
+在GitHub Actions中，您需要在仓库的**Settings** > **Secrets and variables** > **Actions**中配置以下Secrets： 
+
+| Secret名称        | 描述                | 值示例          | 
+|------------------|---------------------|----------------| 
+| SMTP_SERVER      | SMTP服务器地址       | smtp.qq.com    | 
+| SMTP_PORT        | SMTP服务器端口       | 465            | 
+| SMTP_USER        | SMTP用户名          | your@qq.com    | 
+| SMTP_PASSWORD    | SMTP密码或授权码     | your_password  | 
+| RECIPIENTS       | 收件人列表，用分号分隔 | recipient1@qq.com;recipient2@qq.com | 
+
+**注意**：
+- 对于QQ邮箱，SMTP_PASSWORD是QQ邮箱的授权码，而不是登录密码
+- 确保您已开启QQ邮箱的SMTP服务
+- 请严格按照上述Secret名称进行配置，不要使用其他名称
 
 ## 自动化部署
 
