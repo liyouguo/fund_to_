@@ -28,11 +28,13 @@ jobs:
           cache: 'pip'
 
       - name: 安装依赖
+        working-directory: fund_signal_system
         run: |
           pip install -r requirements.txt
 
       - name: 运行基金分析
         id: analyze
+        working-directory: fund_signal_system
         env:
           # 通过Secrets管理敏感信息
           SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
@@ -48,9 +50,9 @@ jobs:
         with:
           name: fund-reports
           path: |
-            output/*.csv
-            output/*.xlsx
-            logs/*.log
+            fund_signal_system/output/*.csv
+            fund_signal_system/output/*.xlsx
+            fund_signal_system/logs/*.log
 
       - name: 发送失败通知
         if: ${{ failure() }}
