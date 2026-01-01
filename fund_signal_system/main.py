@@ -171,9 +171,9 @@ class FundSignalAnalyzer:
         try:
             logger.info(f"开始获取基金{fund_code}历史数据")
             
-            # 获取原始数据
-            logger.debug(f"调用akshare获取基金{fund_code}单位净值走势")
-            df = ak.fund_open_fund_info_em(symbol=fund_code, indicator="单位净值走势")
+            # 获取原始数据 - 使用新的接口函数替代fund_open_fund_info_em
+            logger.debug(f"调用akshare获取基金{fund_code}历史净值数据")
+            df = ak.fund_open_fund_hist_net_value(fund=fund_code)
             
             if df is None:
                 logger.warning(f"基金{fund_code}返回数据为空")
@@ -188,6 +188,15 @@ class FundSignalAnalyzer:
             
             # 数据清洗和处理
             logger.debug("开始数据清洗和处理")
+            
+            # 检查并处理不同的字段名
+            if '净值日期' not in df.columns and 'date' in df.columns:
+                df = df.rename(columns={'date': '净值日期'})
+            if '单位净值' not in df.columns and 'net_value' in df.columns:
+                df = df.rename(columns={'net_value': '单位净值'})
+            if '日增长率' not in df.columns and 'change_rate' in df.columns:
+                df = df.rename(columns={'change_rate': '日增长率'})
+            
             df['净值日期'] = pd.to_datetime(df['净值日期'])
             logger.debug("净值日期转换为datetime类型完成")
             
