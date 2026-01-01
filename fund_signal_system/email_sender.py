@@ -26,8 +26,14 @@ class EmailSender:
                 logger.warning(f"无效的SMTP_PORT值: {smtp_port_env}，使用默认值465")
                 smtp_port = 465
         
+        # 确保SMTP服务器地址有效
+        smtp_server = os.environ.get('SMTP_SERVER', '')
+        if not smtp_server or not smtp_server.strip():
+            smtp_server = 'smtp.qq.com'
+            logger.warning(f"SMTP_SERVER环境变量为空，使用默认值: {smtp_server}")
+        
         return {
-            'smtp_server': os.environ.get('SMTP_SERVER', 'smtp.qq.com'),
+            'smtp_server': smtp_server.strip(),
             'smtp_port': smtp_port,
             'smtp_user': os.environ.get('SMTP_USER', ''),
             'smtp_password': os.environ.get('SMTP_PASSWORD', ''),
@@ -120,9 +126,18 @@ class EmailSender:
             # 发送邮件
             logger.info(f"连接SMTP服务器：{self.config['smtp_server']}:{self.config['smtp_port']}")
             server = smtplib.SMTP_SSL(self.config['smtp_server'], self.config['smtp_port'])
+            logger.debug("SMTP服务器连接成功")
+            
+            logger.debug(f"登录SMTP服务器：{self.config['smtp_user']}")
             server.login(self.config['smtp_user'], self.config['smtp_password'])
+            logger.debug("SMTP服务器登录成功")
+            
+            logger.debug(f"发送邮件给：{','.join(self.config['recipients'])}")
             server.send_message(msg)
+            logger.debug("邮件发送成功")
+            
             server.quit()
+            logger.debug("SMTP服务器连接已关闭")
             
             logger.info(f"邮件发送成功，收件人：{','.join(self.config['recipients'])}")
             logger.info(f"附件：{signal_csv_path}")
