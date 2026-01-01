@@ -15,25 +15,45 @@ class EmailSender:
     
     def _load_config(self):
         """加载邮件配置"""
-        # 处理SMTP_PORT环境变量为空字符串的情况
+        # 打印所有邮件相关的环境变量，用于调试
+        logger.debug(f"SMTP_SERVER环境变量: '{os.environ.get('SMTP_SERVER')}'")
+        logger.debug(f"SMTP_PORT环境变量: '{os.environ.get('SMTP_PORT')}'")
+        logger.debug(f"SMTP环境变量: '{os.environ.get('SMTP')}'")
+        logger.debug(f"SMTP_USER环境变量: '{os.environ.get('SMTP_USER')}'")
+        logger.debug(f"SMTP_PASSWORD环境变量: '{os.environ.get('SMTP_PASSWORD')}'")
+        logger.debug(f"RECIPIENTS环境变量: '{os.environ.get('RECIPIENTS')}'")
+        
+        # 处理SMTP端口 - 同时检查SMTP_PORT和SMTP环境变量
         smtp_port_env = os.environ.get('SMTP_PORT')
+        if not smtp_port_env or not smtp_port_env.strip():
+            # 如果SMTP_PORT为空，尝试使用SMTP环境变量
+            smtp_port_env = os.environ.get('SMTP')
+            logger.debug(f"使用SMTP环境变量作为端口: '{smtp_port_env}'")
+        
         smtp_port = 465
         if smtp_port_env and smtp_port_env.strip():
             try:
                 smtp_port = int(smtp_port_env.strip())
             except ValueError:
                 # 如果转换失败，使用默认值
-                logger.warning(f"无效的SMTP_PORT值: {smtp_port_env}，使用默认值465")
+                logger.warning(f"无效的SMTP端口值: {smtp_port_env}，使用默认值465")
                 smtp_port = 465
         
         # 确保SMTP服务器地址有效
-        smtp_server = os.environ.get('SMTP_SERVER', '')
-        if not smtp_server or not smtp_server.strip():
+        smtp_server = os.environ.get('SMTP_SERVER')
+        logger.debug(f"初始SMTP_SERVER: '{smtp_server}'")
+        
+        if smtp_server is None or not smtp_server.strip():
+            # 显式设置默认值，确保不为空
             smtp_server = 'smtp.qq.com'
-            logger.warning(f"SMTP_SERVER环境变量为空，使用默认值: {smtp_server}")
+            logger.warning(f"SMTP_SERVER环境变量为空或未设置，使用默认值: {smtp_server}")
+        else:
+            smtp_server = smtp_server.strip()
+        
+        logger.debug(f"最终SMTP_SERVER: '{smtp_server}'")
         
         return {
-            'smtp_server': smtp_server.strip(),
+            'smtp_server': smtp_server,
             'smtp_port': smtp_port,
             'smtp_user': os.environ.get('SMTP_USER', ''),
             'smtp_password': os.environ.get('SMTP_PASSWORD', ''),
