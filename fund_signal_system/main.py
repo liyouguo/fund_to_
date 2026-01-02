@@ -9,6 +9,7 @@ import os
 import argparse
 from logger import logger
 from email_sender import EmailSender
+import pywencai
 warnings.filterwarnings('ignore')
 
 class FundSignalAnalyzer:
@@ -29,6 +30,41 @@ class FundSignalAnalyzer:
         self.report_date = datetime.now().strftime('%Y-%m-%d')
         self.email_sender = EmailSender()
         logger.info(f"初始化基金信号分析器，报告日期：{self.report_date}")
+    
+    def get_funds_from_wencai(self, query_content="场外基金近1年涨幅top200"):
+        """使用问财选股获取基金列表"""
+        logger.info(f"开始使用问财选股获取基金列表，查询条件：{query_content}")
+        
+        try:
+            # 自动翻页查询场外基金数据
+            fund_data = pywencai.get(
+                query=query_content,
+                query_type="fund",  # 指定查询类型为基金
+                loop=True,  # 自动循环分页，获取所有页数据
+                perpage=100,  # 每页最大100条
+                sleep=1,  # 每页请求间隔1秒
+                log=True,  # 打印请求日志
+            )
+            
+            if fund_data is None or fund_data.empty:
+                logger.error("未查询到场外基金数据，请检查查询语句!")
+                return []
+            
+            logger.info(f"问财选股成功，共获取 {len(fund_data)} 条记录")
+            
+            # 确保去掉".OF"后缀，兼容带完整格式的基金代码
+            if '基金代码' in fund_data.columns:
+                fund_data['基金代码'] = fund_data['基金代码'].astype(str).str.split('.').str[0]
+                fund_codes = fund_data['基金代码'].tolist()
+                logger.info(f"获取到基金代码列表：{fund_codes[:10]}...(共{len(fund_codes)}个)")
+                return fund_codes
+            else:
+                logger.error("问财返回数据中未包含'基金代码'字段")
+                return []
+                
+        except Exception as e:
+            logger.error(f"问财选股失败：{str(e)}")
+            return []
     
     def get_fund_basic_info(self, fund_code="000001"):
         """获取基金基本信息"""
@@ -393,7 +429,7 @@ class FundSignalAnalyzer:
             logger.error(f"分析基金{fund_code}失败：{str(e)}")
             return None
     
-    def run(self, days_to_keep=10, fund_codes=None):
+    def run(self, days_to_keep=10, fund_codes=None, wencai_query=None):
         """运行基金信号分析"""
         logger.info("=" * 80)
         logger.info("基金信号分析系统开始运行")
@@ -401,14 +437,18 @@ class FundSignalAnalyzer:
         logger.info(f"保留天数：{days_to_keep}")
         logger.info("=" * 80)
         
-        # 使用默认基金代码或传入的基金代码
-        if fund_codes is None:
+        # 使用问财选股获取基金列表
+        if wencai_query:
+            fund_codes = self.get_funds_from_wencai(wencai_query)
+            if not fund_codes:
+                logger.error("问财选股未返回有效基金列表，使用默认基金列表")
+                fund_codes = self.DEFAULT_FUND_CODES
+        # 使用传入的基金代码或默认基金代码
+        elif fund_codes is None:
             fund_codes = self.DEFAULT_FUND_CODES
             logger.info(f"使用默认基金列表，共{len(fund_codes)}个基金")
-        else:
-            logger.info(f"使用自定义基金列表，共{len(fund_codes)}个基金")
         
-        logger.info(f"待分析基金代码：{fund_codes}")
+        logger.info(f"待分析基金代码：{fund_codes[:10]}...(共{len(fund_codes)}个)")
         
         # 初始化结果存储
         results = []
@@ -526,6 +566,7 @@ def main():
     parser = argparse.ArgumentParser(description='基金信号分析系统')
     parser.add_argument('--days', type=int, default=10, help='保留数据天数')
     parser.add_argument('--funds', type=str, help='基金代码列表，用逗号分隔')
+    parser.add_argument('--wencai', type=str, help='问财选股查询语句，例如：场外基金近1年涨幅top200')
     parser.add_argument('--test-email', action='store_true', help='测试邮件发送')
     args = parser.parse_args()
     
@@ -562,7 +603,7 @@ def main():
         fund_codes = args.funds.split(',')
     
     # 运行分析
-    analyzer.run(days_to_keep=args.days, fund_codes=fund_codes)
+    analyzer.run(days_to_keep=args.days, fund_codes=fund_codes, wencai_query=args.wencai)
 
 if __name__ == "__main__":
     main()
