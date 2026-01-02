@@ -33,8 +33,8 @@ class FundSignalAnalyzer:
     
 
     
-    def get_funds_from_wencai(self, query_content="场外基金近1年涨幅top100，基金类型，c类，"):
-        """使用问财选股获取基金列表"""
+    def get_funds_from_wencai(self, query_content="场外基金近1年涨幅top100，混合类"):
+        """使用问财选股获取基金列表和详细信息"""
         logger.info(f"开始使用问财选股获取基金列表，查询条件：{query_content}")
         
         try:
@@ -57,7 +57,7 @@ class FundSignalAnalyzer:
             
             if fund_data is None:
                 logger.error("pywencai.get()返回None")
-                return []
+                return None
             
             if isinstance(fund_data, pd.DataFrame):
                 logger.info(f"问财返回DataFrame，共 {len(fund_data)} 条记录")
@@ -66,11 +66,16 @@ class FundSignalAnalyzer:
                 # 打印返回数据的前几行，方便调试
                 if not fund_data.empty:
                     logger.info(f"返回数据前3行：\n{fund_data.head(3)}")
+                    # 打印完整的列名和部分字段值
+                    logger.info("\n=== 详细数据列信息 ===")
+                    for i, col in enumerate(fund_data.columns):
+                        sample_value = fund_data[col].iloc[0] if len(fund_data) > 0 else "N/A"
+                        logger.info(f"{i+1}. 列名：{col}，示例值：{sample_value}")
                 
                 # 检查数据是否为空
                 if fund_data.empty:
                     logger.error("问财返回的数据为空DataFrame")
-                    return []
+                    return None
                 
                 # 查找基金代码相关的列
                 fund_code_cols = [col for col in fund_data.columns if '代码' in col or 'code' in col.lower()]
@@ -78,7 +83,7 @@ class FundSignalAnalyzer:
                 
                 if not fund_code_cols:
                     logger.error("问财返回数据中未找到基金代码相关字段")
-                    return []
+                    return None
                 
                 # 使用找到的第一个基金代码列
                 fund_code_col = fund_code_cols[0]
@@ -86,14 +91,13 @@ class FundSignalAnalyzer:
                 
                 # 确保去掉".OF"后缀，兼容带完整格式的基金代码
                 fund_data['基金代码'] = fund_data[fund_code_col].astype(str).str.split('.').str[0]
-                fund_codes = fund_data['基金代码'].tolist()
                 
-                logger.info(f"获取到基金代码列表：{fund_codes[:10]}...(共{len(fund_codes)}个)")
-                return fund_codes
+                logger.info(f"获取到基金数据：{list(fund_data['基金代码'])[:10]}...(共{len(fund_data)}个)")
+                return fund_data
             else:
                 logger.error(f"问财返回的不是DataFrame，而是 {type(fund_data)}")
                 logger.error(f"返回数据：{fund_data}")
-                return []
+                return None
                 
         except Exception as e:
             logger.error(f"问财选股失败：{str(e)}")
@@ -102,7 +106,7 @@ class FundSignalAnalyzer:
             # 打印堆栈信息
             import traceback
             logger.error(f"堆栈信息：{traceback.format_exc()}")
-            return []
+            return None
     
     def get_fund_basic_info(self, fund_code="000001"):
         """获取基金基本信息，使用akshare获取"""
@@ -519,10 +523,38 @@ class FundSignalAnalyzer:
         logger.info(f"保留天数：{days_to_keep}")
         logger.info("=" * 80)
         
-        # 使用问财选股获取基金列表
+        # 初始化基金信息字典
+        fund_info_dict = {}
+        
+        # 使用问财选股获取基金列表和详细信息
         if wencai_query:
-            fund_codes = self.get_funds_from_wencai(wencai_query)
-            if not fund_codes:
+            wencai_fund_data = self.get_funds_from_wencai(wencai_query)
+            if wencai_fund_data is not None:
+                # 从问财返回的数据中提取基金代码、基金简称和投资类型
+                logger.info(f"从问财数据中提取基金信息...")
+                for _, row in wencai_fund_data.iterrows():
+                    fund_code = row['基金代码']
+                    # 查找基金简称列
+                    fund_name_cols = [col for col in wencai_fund_data.columns if '简称' in col or '名称' in col]
+                    if fund_name_cols:
+                        fund_name_col = fund_name_cols[0]
+                        fund_name = row[fund_name_col]
+                    else:
+                        fund_name = f"基金{fund_code}"
+                    # 查找投资类型列
+                    invest_type_cols = [col for col in wencai_fund_data.columns if '投资类型' in col or '类型' in col]
+                    if invest_type_cols:
+                        invest_type_col = invest_type_cols[0]
+                        invest_type = row[invest_type_col]
+                    else:
+                        invest_type = "未知类型"
+                    fund_info_dict[fund_code] = {
+                        'fund_name': fund_name,
+                        'invest_type': invest_type
+                    }
+                fund_codes = list(fund_info_dict.keys())
+                logger.info(f"从问财获取到 {len(fund_codes)} 个基金")
+            else:
                 logger.error("问财选股未返回有效基金列表，使用默认基金列表")
                 fund_codes = self.DEFAULT_FUND_CODES
         # 使用传入的基金代码或默认基金代码
@@ -580,6 +612,10 @@ class FundSignalAnalyzer:
                     
                     signal_df = signal_df[signal_df['净值日期'] >= cutoff_date]
                     signal_df['净值日期'] = signal_df['净值日期'].dt.strftime('%Y-%m-%d')
+                
+                # 从问财数据中添加投资类型
+                if fund_code in fund_info_dict:
+                    signal_df['投资类型'] = fund_info_dict[fund_code]['invest_type']
                 
                 # 立即写入信号数据到CSV文件
                 logger.info(f"开始写入基金{fund_code}信号数据到CSV文件")
