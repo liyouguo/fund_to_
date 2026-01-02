@@ -413,18 +413,20 @@ class FundSignalAnalyzer:
         # 初始化结果存储
         results = []
         
-        # 创建输出目录
-        output_dir = 'output'
-        logger.debug(f"检查输出目录：{output_dir}")
+        # 创建输出目录，使用绝对路径确保在任何环境下都能正确访问
+        output_dir = os.path.join(os.getcwd(), 'output')
+        logger.info(f"输出目录绝对路径：{output_dir}")
         if not os.path.exists(output_dir):
             logger.info(f"创建输出目录：{output_dir}")
-            os.makedirs(output_dir)
+            os.makedirs(output_dir, exist_ok=True)
         else:
-            logger.debug(f"输出目录已存在：{output_dir}")
+            logger.info(f"输出目录已存在：{output_dir}")
         
-        # 初始化CSV和Excel文件
+        # 初始化CSV和Excel文件，使用绝对路径
         csv_filename = os.path.join(output_dir, f'信号明细_{self.report_date}.csv')
         excel_filename = os.path.join(output_dir, f'信号明细_{self.report_date}.xlsx')
+        logger.info(f"CSV文件路径：{csv_filename}")
+        logger.info(f"Excel文件路径：{excel_filename}")
         
         # 初始化标志，用于判断是否是第一次写入
         first_write = True

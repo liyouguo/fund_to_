@@ -139,17 +139,38 @@ class EmailSender:
             html_part.add_header('Content-Disposition', 'inline')
             msg.attach(html_part)
             
-            # 添加附件
-            with open(signal_csv_path, 'r', encoding='utf-8-sig') as f:
-                # 使用MIMEText处理CSV文件，因为它是文本文件
-                attachment = MIMEText(f.read(), 'csv', 'utf-8')
-                # 确保文件名正确设置
-                filename = os.path.basename(signal_csv_path)
-                logger.info(f"添加附件：{filename}")
-                # 明确设置Content-Disposition和Content-Type
-                attachment.add_header('Content-Disposition', f'attachment; filename="{filename}"')
-                attachment.add_header('Content-Type', 'text/csv; charset=utf-8')
-                msg.attach(attachment)
+            # 检查附件文件是否存在且不为空
+            logger.info(f"尝试添加附件：{signal_csv_path}")
+            
+            # 获取文件的绝对路径，避免相对路径问题
+            abs_signal_csv_path = os.path.abspath(signal_csv_path)
+            logger.info(f"附件绝对路径：{abs_signal_csv_path}")
+            
+            if not os.path.exists(abs_signal_csv_path):
+                logger.error(f"附件文件不存在：{abs_signal_csv_path}")
+                return False
+            
+            file_size = os.path.getsize(abs_signal_csv_path)
+            if file_size == 0:
+                logger.error(f"附件文件为空：{abs_signal_csv_path}")
+                return False
+            
+            logger.info(f"附件文件存在，大小：{file_size}字节")
+            
+            # 添加附件，使用MIMEApplication处理，确保所有邮件客户端都能正确显示
+            try:
+                with open(abs_signal_csv_path, 'rb') as f:
+                    attachment = MIMEApplication(f.read())
+                    filename = os.path.basename(abs_signal_csv_path)
+                    logger.info(f"添加附件：{filename}")
+                    # 明确设置Content-Disposition和文件名
+                    attachment.add_header('Content-Disposition', 'attachment', filename=("utf-8", "", filename))
+                    attachment.add_header('Content-Type', 'text/csv', charset='utf-8')
+                    msg.attach(attachment)
+                    logger.info(f"附件成功添加到邮件：{filename}")
+            except Exception as e:
+                logger.error(f"添加附件时出错：{str(e)}")
+                return False
             
             # 发送邮件
             logger.info(f"连接SMTP服务器：{self.config['smtp_server']}:{self.config['smtp_port']}")
