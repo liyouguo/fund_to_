@@ -36,7 +36,12 @@ class FundSignalAnalyzer:
         logger.info(f"开始使用问财选股获取基金列表，查询条件：{query_content}")
         
         try:
+            # 导入必要的库
+            import pywencai
+            import pandas as pd
+            
             # 自动翻页查询场外基金数据
+            logger.info("调用pywencai.get()函数获取数据...")
             fund_data = pywencai.get(
                 query=query_content,
                 query_type="fund",  # 指定查询类型为基金
@@ -46,24 +51,55 @@ class FundSignalAnalyzer:
                 log=True,  # 打印请求日志
             )
             
-            if fund_data is None or fund_data.empty:
-                logger.error("未查询到场外基金数据，请检查查询语句!")
+            logger.info(f"pywencai.get()返回结果类型：{type(fund_data)}")
+            
+            if fund_data is None:
+                logger.error("pywencai.get()返回None")
                 return []
             
-            logger.info(f"问财选股成功，共获取 {len(fund_data)} 条记录")
-            
-            # 确保去掉".OF"后缀，兼容带完整格式的基金代码
-            if '基金代码' in fund_data.columns:
-                fund_data['基金代码'] = fund_data['基金代码'].astype(str).str.split('.').str[0]
+            if isinstance(fund_data, pd.DataFrame):
+                logger.info(f"问财返回DataFrame，共 {len(fund_data)} 条记录")
+                logger.info(f"返回数据列名：{list(fund_data.columns)}")
+                
+                # 打印返回数据的前几行，方便调试
+                if not fund_data.empty:
+                    logger.info(f"返回数据前3行：\n{fund_data.head(3)}")
+                
+                # 检查数据是否为空
+                if fund_data.empty:
+                    logger.error("问财返回的数据为空DataFrame")
+                    return []
+                
+                # 查找基金代码相关的列
+                fund_code_cols = [col for col in fund_data.columns if '代码' in col or 'code' in col.lower()]
+                logger.info(f"找到可能的基金代码列：{fund_code_cols}")
+                
+                if not fund_code_cols:
+                    logger.error("问财返回数据中未找到基金代码相关字段")
+                    return []
+                
+                # 使用找到的第一个基金代码列
+                fund_code_col = fund_code_cols[0]
+                logger.info(f"使用 {fund_code_col} 作为基金代码列")
+                
+                # 确保去掉".OF"后缀，兼容带完整格式的基金代码
+                fund_data['基金代码'] = fund_data[fund_code_col].astype(str).str.split('.').str[0]
                 fund_codes = fund_data['基金代码'].tolist()
+                
                 logger.info(f"获取到基金代码列表：{fund_codes[:10]}...(共{len(fund_codes)}个)")
                 return fund_codes
             else:
-                logger.error("问财返回数据中未包含'基金代码'字段")
+                logger.error(f"问财返回的不是DataFrame，而是 {type(fund_data)}")
+                logger.error(f"返回数据：{fund_data}")
                 return []
                 
         except Exception as e:
             logger.error(f"问财选股失败：{str(e)}")
+            logger.error(f"异常类型：{type(e).__name__}")
+            logger.error(f"异常详情：{repr(e)}")
+            # 打印堆栈信息
+            import traceback
+            logger.error(f"堆栈信息：{traceback.format_exc()}")
             return []
     
     def get_fund_basic_info(self, fund_code="000001"):
@@ -566,7 +602,7 @@ def main():
     parser = argparse.ArgumentParser(description='基金信号分析系统')
     parser.add_argument('--days', type=int, default=10, help='保留数据天数')
     parser.add_argument('--funds', type=str, help='基金代码列表，用逗号分隔')
-    parser.add_argument('--wencai', type=str, help='问财选股查询语句，例如：场外基金近1年涨幅top200')
+    parser.add_argument('--wencai', type=str,default='',help='问财选股查询语句，例如：场外基金近1年涨幅top200')
     parser.add_argument('--test-email', action='store_true', help='测试邮件发送')
     args = parser.parse_args()
     
