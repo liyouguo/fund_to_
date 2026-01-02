@@ -473,15 +473,9 @@ class FundSignalAnalyzer:
         logger.info(f"保留天数：{days_to_keep}")
         logger.info("=" * 80)
         
-        # 优先级：命令行参数 > 环境变量 > 默认值
-        # 从环境变量获取问财查询语句
-        env_wencai_query = os.environ.get('WENCAI_QUERY')
-        logger.info(f"从环境变量获取的问财查询语句：{env_wencai_query}")
-        
         # 使用问财选股获取基金列表
-        final_wencai_query = wencai_query or env_wencai_query
-        if final_wencai_query:
-            fund_codes = self.get_funds_from_wencai(final_wencai_query)
+        if wencai_query:
+            fund_codes = self.get_funds_from_wencai(wencai_query)
             if not fund_codes:
                 logger.error("问财选股未返回有效基金列表，使用默认基金列表")
                 fund_codes = self.DEFAULT_FUND_CODES
