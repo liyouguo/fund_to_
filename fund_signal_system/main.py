@@ -29,151 +29,11 @@ class FundSignalAnalyzer:
         """初始化基金信号分析器"""
         self.report_date = datetime.now().strftime('%Y-%m-%d')
         self.email_sender = EmailSender()
-        # 基金数据缓存
-        self.fund_data_cache = None
         logger.info(f"初始化基金信号分析器，报告日期：{self.report_date}")
     
-    def fetch_fund_data_from_api(self):
-        """从外部API获取基金数据并缓存，支持多API源和正则表达式提取"""
-        if self.fund_data_cache is not None:
-            logger.info("基金数据缓存已存在，直接返回")
-            return self.fund_data_cache
-        
-        # 定义API数据源列表，优先级从高到低
-        api_sources = [
-            {"name": "东方财富", "url": "http://fund.eastmoney.com/js/fundcode_search.js", "timeout": 10},
-            {"name": "1234567", "url": "https://m.1234567.com.cn/data/FundSuggestList.js", "timeout": 10}
-        ]
-        
-        max_retries = 2  # 每个API的最大重试次数
-        retry_delay = 3  # 初始重试延迟（秒）
-        
-        import requests
-        import json
-        import re
-        import time
-        
-        for api in api_sources:
-            for retry in range(max_retries):
-                try:
-                    logger.info(f"尝试从{api['name']}API获取基金数据：{api['url']}（第{retry+1}/{max_retries}次）")
-                    
-                    response = requests.get(api['url'], timeout=api['timeout'])
-                    logger.info(f"{api['name']}API请求状态码：{response.status_code}")
-                    
-                    content = response.text
-                    logger.info(f"{api['name']}API响应内容长度：{len(content)}")
-                    
-                    fund_dict = {}
-                    
-                    if api['name'] == "东方财富":
-                        # 东方财富API：使用正则表达式提取基金数组
-                        fund_array_match = re.search(r'var\s+r\s*=\s*(\[[\s\S]*?\])\s*;', content)
-                        if fund_array_match:
-                            fund_array_str = fund_array_match.group(1)
-                            logger.info(f"提取的{api['name']}基金数组长度：{len(fund_array_str)}")
-                            
-                            try:
-                                # 解析为Python列表
-                                fund_array = json.loads(fund_array_str)
-                                logger.info(f"{api['name']}返回基金数据数量：{len(fund_array)}")
-                                
-                                # 构建基金字典
-                                for fund in fund_array:
-                                    if isinstance(fund, list) and len(fund) >= 5:
-                                        fund_code = fund[0]
-                                        fund_name = fund[2]
-                                        fund_type = fund[3]
-                                        fund_dict[fund_code] = {
-                                            "name": fund_name,
-                                            "type": fund_type
-                                        }
-                                
-                                logger.info(f"{api['name']}基金字典构建完成，共 {len(fund_dict)} 条记录")
-                                if fund_dict:
-                                    self.fund_data_cache = fund_dict
-                                    return fund_dict
-                            except json.JSONDecodeError as e:
-                                logger.error(f"解析{api['name']}基金数据失败：{str(e)}")
-                    
-                    elif api['name'] == "1234567":
-                        # 1234567API：使用正则表达式提取Datas数组
-                        datas_match = re.search(r'"Datas":\s*(\[[\s\S]*?\])', content)
-                        if datas_match:
-                            datas_str = datas_match.group(1)
-                            logger.info(f"提取的{api['name']}Datas字符串长度：{len(datas_str)}")
-                            
-                            try:
-                                # 解析为Python列表
-                                datas_list = json.loads(datas_str)
-                                logger.info(f"{api['name']}返回基金数据数量：{len(datas_list)}")
-                                
-                                # 构建基金字典
-                                for fund in datas_list:
-                                    parts = fund.split("|")
-                                    if len(parts) >= 4:
-                                        fund_code = parts[0]
-                                        fund_name = parts[2]
-                                        fund_type = parts[3]
-                                        fund_dict[fund_code] = {
-                                            "name": fund_name,
-                                            "type": fund_type
-                                        }
-                                
-                                logger.info(f"{api['name']}基金字典构建完成，共 {len(fund_dict)} 条记录")
-                                if fund_dict:
-                                    self.fund_data_cache = fund_dict
-                                    return fund_dict
-                            except json.JSONDecodeError as e:
-                                logger.error(f"解析{api['name']}基金数据失败：{str(e)}")
-                                
-                                # 备用方法：直接提取所有基金信息
-                                funds = re.findall(r'"([^"]+)"', datas_str)
-                                logger.info(f"{api['name']}备用方法找到 {len(funds)} 个基金")
-                                
-                                for fund_str in funds:
-                                    parts = fund_str.split("|")
-                                    if len(parts) >= 4:
-                                        fund_code = parts[0]
-                                        fund_name = parts[2]
-                                        fund_type = parts[3]
-                                        fund_dict[fund_code] = {
-                                            "name": fund_name,
-                                            "type": fund_type
-                                        }
-                                
-                                logger.info(f"{api['name']}备用方法基金字典构建完成，共 {len(fund_dict)} 条记录")
-                                if fund_dict:
-                                    self.fund_data_cache = fund_dict
-                                    return fund_dict
-                    
-                    # 如果当前API未返回有效数据，继续重试
-                    logger.warning(f"{api['name']}API未返回有效基金数据，尝试重试")
-                    if retry < max_retries - 1:
-                        logger.info(f"等待{retry_delay}秒后重试...")
-                        time.sleep(retry_delay)
-                        retry_delay *= 2  # 指数退避
-                    
-                except requests.RequestException as e:
-                    logger.error(f"{api['name']}API请求失败：{str(e)}")
-                    if retry < max_retries - 1:
-                        logger.info(f"等待{retry_delay}秒后重试...")
-                        time.sleep(retry_delay)
-                        retry_delay *= 2  # 指数退避
-                except Exception as e:
-                    logger.error(f"{api['name']}API处理失败：{str(e)}")
-                    if retry < max_retries - 1:
-                        logger.info(f"等待{retry_delay}秒后重试...")
-                        time.sleep(retry_delay)
-                        retry_delay *= 2  # 指数退避
-            
-            # 重置重试延迟
-            retry_delay = 3
-        
-        logger.warning("所有API获取基金数据失败，返回空字典")
-        return {}
+
     
-    def get_funds_from_wencai(self, query_content="场外基金近1年涨幅top200"):
+    def get_funds_from_wencai(self, query_content="场外基金近1年涨幅top100，基金类型，c类，"):
         """使用问财选股获取基金列表"""
         logger.info(f"开始使用问财选股获取基金列表，查询条件：{query_content}")
         
@@ -245,19 +105,10 @@ class FundSignalAnalyzer:
             return []
     
     def get_fund_basic_info(self, fund_code="000001"):
-        """获取基金基本信息，优先使用API数据"""
+        """获取基金基本信息，使用akshare获取"""
         logger.debug(f"开始获取基金{fund_code}基本信息")
         
-        # 首先尝试从API缓存中获取
-        fund_dict = self.fetch_fund_data_from_api()
-        if fund_code in fund_dict:
-            fund_info = fund_dict[fund_code]
-            logger.info(f"从API缓存中获取基金{fund_code}基本信息成功：名称={fund_info['name']}, 类型={fund_info['type']}")
-            return fund_info['name'], fund_info['type']
-        
-        logger.warning(f"基金代码{fund_code}不在API缓存中，尝试使用akshare获取")
-        
-        # 备用方案：使用akshare获取
+        # 使用akshare获取
         max_retries = 3
         retry_delay = 2
         
@@ -272,9 +123,8 @@ class FundSignalAnalyzer:
                         logger.debug(f"直接获取基金{fund_code}基本信息成功")
                         if '基金名称' in fund_info.columns and not fund_info['基金名称'].empty:
                             fund_name = fund_info['基金名称'].iloc[0]
-                            fund_type = "未知类型"
-                            logger.debug(f"基金{fund_code}基本信息获取成功：名称={fund_name}, 类型={fund_type}")
-                            return fund_name, fund_type
+                            logger.debug(f"基金{fund_code}基本信息获取成功：名称={fund_name}")
+                            return fund_name
                 except Exception as e:
                     logger.warning(f"直接获取失败，尝试获取所有基金列表：{str(e)}")
                     
@@ -286,11 +136,10 @@ class FundSignalAnalyzer:
                 
                 if not fund_info.empty:
                     fund_name = fund_info.iloc[0]['基金简称']
-                    fund_type = fund_info.iloc[0]['基金类型']
-                    logger.debug(f"基金{fund_code}基本信息获取成功：名称={fund_name}, 类型={fund_type}")
-                    return fund_name, fund_type
+                    logger.debug(f"基金{fund_code}基本信息获取成功：名称={fund_name}")
+                    return fund_name
                 logger.warning(f"基金{fund_code}基本信息未找到")
-                return f"基金{fund_code}", "未知类型"
+                return f"基金{fund_code}"
             except Exception as e:
                 if retry < max_retries - 1:
                     logger.warning(f"获取基金{fund_code}基本信息失败，{retry_delay}秒后重试：{str(e)}")
@@ -298,7 +147,7 @@ class FundSignalAnalyzer:
                     retry_delay *= 2  # 指数退避
                 else:
                     logger.error(f"获取基金{fund_code}基本信息失败，已重试{max_retries}次：{str(e)}")
-                    return f"基金{fund_code}", "未知类型"
+                    return f"基金{fund_code}"
     
     def show_progress(self, current, total, start_time, prefix="分析进度"):
         """显示分析进度"""
@@ -352,12 +201,11 @@ class FundSignalAnalyzer:
                     logger.debug(f"fund_open_fund_info_em获取成功，共{len(history_df)}条记录")
                     
                     # 获取基金基本信息
-                    fund_name, fund_type = self.get_fund_basic_info(fund_code)
+                    fund_name = self.get_fund_basic_info(fund_code)
                     
-                    # 添加基金代码、名称和类型
+                    # 添加基金代码和简称
                     history_df['基金代码'] = fund_code
-                    history_df['基金名称'] = fund_name
-                    history_df['基金类型'] = fund_type
+                    history_df['基金简称'] = fund_name
                     
                     # 重命名列以匹配原有结构
                     history_df = history_df.rename(columns={
@@ -402,7 +250,7 @@ class FundSignalAnalyzer:
             
             # 获取基金基本信息
             logger.debug("获取基金基本信息")
-            fund_name, fund_type = self.get_fund_basic_info(fund_code)
+            fund_name = self.get_fund_basic_info(fund_code)
             
             # 获取单位净值和累计净值
             # 动态获取最新净值列名
@@ -420,8 +268,7 @@ class FundSignalAnalyzer:
                 '最新净值': [float(unit_nav)],
                 '日增长率%': [float(daily_growth)],
                 '基金代码': [fund_code],
-                '基金名称': [fund_name],
-                '基金类型': [fund_type]
+                '基金简称': [fund_name]
             })
             
             logger.info(f"基金{fund_code}数据获取成功，共{len(history_data)}条记录")
@@ -595,8 +442,8 @@ class FundSignalAnalyzer:
         # 只保留信号相关字段
         logger.debug("定义需要保留的字段列表")
         required_columns = [
-            '基金代码', '基金名称', '基金类型', '净值日期',
-            '均线信号', 'RSI', 'RSI信号', 'MACD', 'cci值', 'cci信号',
+            '基金代码', '基金简称', '净值日期',
+            '均线信号', 'RSI', 'RSI信号', 'cci值', 'cci信号',
             'macd值', 'macd信号', '布林带下轨值', '布林带中轨值',
             '布林带上轨值', '布林带信号'
         ]
@@ -655,7 +502,7 @@ class FundSignalAnalyzer:
             
             return {
                 'fund_code': fund_code,
-                'fund_name': fund_df['基金名称'].iloc[0],
+                'fund_name': fund_df['基金简称'].iloc[0],
                 'signal_data': signal_df,
                 'raw_data': fund_df
             }
@@ -804,7 +651,7 @@ def main():
         parser = argparse.ArgumentParser(description='基金信号分析系统')
         parser.add_argument('--days', type=int, default=10, help='保留数据天数')
         parser.add_argument('--funds', type=str, help='基金代码列表，用逗号分隔')
-        parser.add_argument('--wencai', type=str, help='问财选股查询语句，例如：场外基金近1年涨幅top200')
+        parser.add_argument('--wencai', type=str, help='问财选股查询语句，例如：场外基金近1年涨幅top100，基金类型，c类')
         parser.add_argument('--test-email', action='store_true', help='测试邮件发送')
         args = parser.parse_args()
         
