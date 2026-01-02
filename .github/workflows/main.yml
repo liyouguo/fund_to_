@@ -11,6 +11,10 @@ on:
         description: '保留数据天数'
         required: false
         default: '10'
+      wencai_query:
+        description: '问财选股查询语句，例如：场外基金近1年涨幅top200'
+        required: false
+        default: '场外基金近1年涨幅top200'
 
 jobs:
   analyze-funds:
@@ -42,6 +46,7 @@ jobs:
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           RECIPIENTS: ${{ secrets.RECIPIENTS }}
+          WENCAI_QUERY: ${{ secrets.WENCAI_QUERY || github.event.inputs.wencai_query || '场外基金近1年涨幅top200' }}
         run: |
           python main.py --days ${{ github.event.inputs.days_to_keep || 10 }}
 

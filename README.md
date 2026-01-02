@@ -109,6 +109,7 @@ python main.py --test-email
 | SMTP_USER         | SMTP用户名          |                | 
 | SMTP_PASSWORD     | SMTP密码            |                | 
 | RECIPIENTS        | 收件人列表，用分号分隔 |                | 
+| WENCAI_QUERY      | 问财选股查询语句     | 场外基金近1年涨幅top200 | 
 
 ### GitHub Actions Secrets配置 
 
@@ -121,6 +122,39 @@ python main.py --test-email
 | SMTP_USER        | SMTP用户名          | your@qq.com    | 
 | SMTP_PASSWORD    | SMTP密码或授权码     | your_password  | 
 | RECIPIENTS       | 收件人列表，用分号分隔 | recipient1@qq.com;recipient2@qq.com | 
+| WENCAI_QUERY     | 问财选股查询语句     | 场外基金近1年涨幅top200 | 
+
+### GitHub Actions 问财选股配置
+
+要在GitHub Actions中使用问财选股功能，您可以修改`.github/workflows/main.yml`文件，添加问财查询参数：
+
+```yaml
+# 在run步骤中添加--wencai参数
+run: |
+  python main.py --days ${{ github.event.inputs.days_to_keep || 10 }} --wencai "场外基金近1年涨幅top200"
+```
+
+您也可以在手动触发工作流时通过输入参数指定问财查询语句：
+
+1. 在工作流配置中添加inputs：
+   ```yaml
+   workflow_dispatch:
+     inputs:
+       days_to_keep:
+         description: '保留数据天数'
+         required: false
+         default: '10'
+       wencai_query:
+         description: '问财选股查询语句，例如：场外基金近1年涨幅top200'
+         required: false
+         default: '场外基金近1年涨幅top200'
+   ```
+
+2. 在run步骤中使用输入参数：
+   ```yaml
+   run: |
+     python main.py --days ${{ github.event.inputs.days_to_keep || 10 }} --wencai "${{ github.event.inputs.wencai_query || '场外基金近1年涨幅top200' }}"
+   ``` 
 
 **注意**：
 - 对于QQ邮箱，SMTP_PASSWORD是QQ邮箱的授权码，而不是登录密码
