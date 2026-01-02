@@ -82,8 +82,14 @@ python main.py --days 5
 # 分析指定基金
 python main.py --funds "000001,110022,710001"
 
+# 使用问财选股（自然语言查询）
+python main.py --wencai "场外基金近1年涨幅top200"
+
 # 组合参数
-python main.py --days 7 --funds "000001,110022"
+python main.py --days 7 --wencai "股票型场外基金 近1年涨幅top100"
+
+# 使用问财选股并指定保留天数
+python main.py --wencai "场外基金近6个月涨幅top50" --days 10
 ```
 
 #### 3. 测试邮件发送
