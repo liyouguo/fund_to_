@@ -103,25 +103,50 @@ class FundSignalAnalyzer:
             return []
     
     def get_fund_basic_info(self, fund_code="000001"):
-        """获取基金基本信息，每次都从API获取最新数据"""
-        try:
-            logger.debug(f"开始获取基金{fund_code}基本信息")
-            # 每次都从API获取最新基金列表，不使用缓存
-            fund_list_df = ak.fund_name_em()
-            logger.debug(f"获取基金列表成功，共{len(fund_list_df)}条记录")
-            
-            fund_info = fund_list_df[fund_list_df['基金代码'] == fund_code]
-            
-            if not fund_info.empty:
-                fund_name = fund_info.iloc[0]['基金简称']
-                fund_type = fund_info.iloc[0]['基金类型']
-                logger.debug(f"基金{fund_code}基本信息获取成功：名称={fund_name}, 类型={fund_type}")
-                return fund_name, fund_type
-            logger.warning(f"基金{fund_code}基本信息未找到")
-            return f"基金{fund_code}", "未知类型"
-        except Exception as e:
-            logger.error(f"获取基金{fund_code}基本信息失败：{str(e)}")
-            return f"基金{fund_code}", "未知类型"
+        """获取基金基本信息，带重试机制"""
+        max_retries = 3
+        retry_delay = 2
+        
+        for retry in range(max_retries):
+            try:
+                logger.debug(f"开始获取基金{fund_code}基本信息，第{retry+1}/{max_retries}次尝试")
+                
+                # 尝试直接获取单个基金的基本信息，而不是获取所有基金列表
+                try:
+                    # 尝试使用fund_open_fund_info_em获取基金基本信息
+                    fund_info = ak.fund_open_fund_info_em(symbol=fund_code, indicator="基本信息")
+                    if fund_info is not None and not fund_info.empty:
+                        logger.debug(f"直接获取基金{fund_code}基本信息成功")
+                        # 尝试从结果中提取基金名称和类型
+                        if '基金名称' in fund_info.columns and not fund_info['基金名称'].empty:
+                            fund_name = fund_info['基金名称'].iloc[0]
+                            fund_type = "未知类型"  # 基本信息中可能没有基金类型
+                            logger.debug(f"基金{fund_code}基本信息获取成功：名称={fund_name}, 类型={fund_type}")
+                            return fund_name, fund_type
+                except Exception as e:
+                    logger.warning(f"直接获取基金{fund_code}基本信息失败，尝试获取所有基金列表：{str(e)}")
+                    
+                # 备用方案：获取所有基金列表
+                fund_list_df = ak.fund_name_em()
+                logger.debug(f"获取基金列表成功，共{len(fund_list_df)}条记录")
+                
+                fund_info = fund_list_df[fund_list_df['基金代码'] == fund_code]
+                
+                if not fund_info.empty:
+                    fund_name = fund_info.iloc[0]['基金简称']
+                    fund_type = fund_info.iloc[0]['基金类型']
+                    logger.debug(f"基金{fund_code}基本信息获取成功：名称={fund_name}, 类型={fund_type}")
+                    return fund_name, fund_type
+                logger.warning(f"基金{fund_code}基本信息未找到")
+                return f"基金{fund_code}", "未知类型"
+            except Exception as e:
+                if retry < max_retries - 1:
+                    logger.warning(f"获取基金{fund_code}基本信息失败，{retry_delay}秒后重试：{str(e)}")
+                    time.sleep(retry_delay)
+                    retry_delay *= 2  # 指数退避
+                else:
+                    logger.error(f"获取基金{fund_code}基本信息失败，已重试{max_retries}次：{str(e)}")
+                    return f"基金{fund_code}", "未知类型"
     
     def show_progress(self, current, total, start_time, prefix="分析进度"):
         """显示分析进度"""
