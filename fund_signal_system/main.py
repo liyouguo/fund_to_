@@ -103,9 +103,10 @@ class FundSignalAnalyzer:
             return []
     
     def get_fund_basic_info(self, fund_code="000001"):
-        """获取基金基本信息"""
+        """获取基金基本信息，每次都从API获取最新数据"""
         try:
             logger.debug(f"开始获取基金{fund_code}基本信息")
+            # 每次都从API获取最新基金列表，不使用缓存
             fund_list_df = ak.fund_name_em()
             logger.debug(f"获取基金列表成功，共{len(fund_list_df)}条记录")
             
@@ -137,7 +138,21 @@ class FundSignalAnalyzer:
         sys.stdout.flush()
     
     def get_fund_data(self, fund_code="000001"):
-        """获取基金历史净值数据"""
+        """获取基金历史净值数据，带重试机制"""
+        def retry_api_call(func, max_retries=3, base_delay=1):
+            """API调用重试装饰器"""
+            for attempt in range(max_retries):
+                try:
+                    return func()
+                except Exception as e:
+                    if attempt < max_retries - 1:
+                        delay = base_delay * (2 ** attempt) + random.uniform(0, 1)
+                        logger.warning(f"第{attempt+1}次尝试失败，{delay:.2f}秒后重试：{str(e)}")
+                        time.sleep(delay)
+                    else:
+                        logger.error(f"第{attempt+1}次尝试失败，放弃重试：{str(e)}")
+                        raise
+        
         try:
             logger.info(f"开始获取基金{fund_code}历史数据")
             
@@ -150,8 +165,11 @@ class FundSignalAnalyzer:
             # 尝试使用fund_open_fund_info_em获取历史数据
             logger.debug(f"尝试使用fund_open_fund_info_em获取基金{fund_code}历史数据")
             try:
-                # 获取基金历史数据
-                history_df = ak.fund_open_fund_info_em(symbol=fund_code, indicator="单位净值走势")
+                # 获取基金历史数据，带重试机制
+                def get_history_data():
+                    return ak.fund_open_fund_info_em(symbol=fund_code, indicator="单位净值走势")
+                
+                history_df = retry_api_call(get_history_data, max_retries=3, base_delay=1)
                 
                 if history_df is not None and not history_df.empty:
                     logger.debug(f"fund_open_fund_info_em获取成功，共{len(history_df)}条记录")
@@ -184,7 +202,11 @@ class FundSignalAnalyzer:
             
             # 备选方案：使用fund_open_fund_daily_em获取当日数据
             logger.debug(f"调用akshare获取所有开放基金每日数据")
-            df = ak.fund_open_fund_daily_em()
+            
+            def get_daily_data():
+                return ak.fund_open_fund_daily_em()
+            
+            df = retry_api_call(get_daily_data, max_retries=3, base_delay=1)
             
             if df is None:
                 logger.warning(f"基金数据返回为空")
@@ -567,9 +589,11 @@ class FundSignalAnalyzer:
             else:
                 logger.warning(f"基金{fund_code}分析失败，跳过")
             
-            # 避免请求过快
-            logger.debug("等待0.5秒，避免API请求过快")
-            time.sleep(0.5)
+            # 避免请求过快，使用2-3秒的随机间隔
+            import random
+            sleep_time = random.uniform(2, 3)
+            logger.debug(f"等待{sleep_time:.2f}秒，避免API请求过快")
+            time.sleep(sleep_time)
         
         elapsed_time = time.time() - start_time
         sys.stdout.write("\n")
@@ -597,56 +621,85 @@ class FundSignalAnalyzer:
         return True
 
 def main():
-    """主函数"""
-    # 解析命令行参数
-    parser = argparse.ArgumentParser(description='基金信号分析系统')
-    parser.add_argument('--days', type=int, default=10, help='保留数据天数')
-    parser.add_argument('--funds', type=str, help='基金代码列表，用逗号分隔')
-    parser.add_argument('--wencai', type=str, help='问财选股查询语句，例如：场外基金近1年涨幅top200')
-    parser.add_argument('--test-email', action='store_true', help='测试邮件发送')
-    args = parser.parse_args()
-    
-    # 初始化分析器
-    analyzer = FundSignalAnalyzer()
-    
-    # 测试邮件发送
-    if args.test_email:
-        logger.info("开始测试邮件发送")
-        # 创建测试文件
-        test_df = pd.DataFrame({
-            '基金代码': ['000001'],
-            '基金名称': ['测试基金'],
-            '基金类型': ['混合型'],
-            '净值日期': ['2026-01-01'],
-            '布林带信号': ['买入'],
-            '报告日期': [analyzer.report_date]
-        })
-        test_csv = f'test_signal_{analyzer.report_date}.csv'
-        test_df.to_csv(test_csv, index=False, encoding='utf-8-sig')
+    """主函数，带完善的异常处理"""
+    try:
+        # 解析命令行参数
+        parser = argparse.ArgumentParser(description='基金信号分析系统')
+        parser.add_argument('--days', type=int, default=10, help='保留数据天数')
+        parser.add_argument('--funds', type=str, help='基金代码列表，用逗号分隔')
+        parser.add_argument('--wencai', type=str, help='问财选股查询语句，例如：场外基金近1年涨幅top200')
+        parser.add_argument('--test-email', action='store_true', help='测试邮件发送')
+        args = parser.parse_args()
         
-        # 发送测试邮件
-        analyzer.email_sender.send_email(test_csv, analyzer.report_date)
+        # 初始化分析器
+        analyzer = FundSignalAnalyzer()
         
-        # 删除测试文件
-        if os.path.exists(test_csv):
-            os.remove(test_csv)
+        # 测试邮件发送
+        if args.test_email:
+            logger.info("开始测试邮件发送")
+            test_csv = None
+            try:
+                # 创建测试文件
+                test_df = pd.DataFrame({
+                    '基金代码': ['000001'],
+                    '基金名称': ['测试基金'],
+                    '基金类型': ['混合型'],
+                    '净值日期': ['2026-01-01'],
+                    '布林带信号': ['买入'],
+                    '报告日期': [analyzer.report_date]
+                })
+                test_csv = f'test_signal_{analyzer.report_date}.csv'
+                test_df.to_csv(test_csv, index=False, encoding='utf-8-sig')
+                
+                # 发送测试邮件
+                analyzer.email_sender.send_email(test_csv, analyzer.report_date)
+            except Exception as e:
+                logger.error(f"测试邮件发送失败：{str(e)}")
+                logger.debug(f"异常详情：{repr(e)}")
+                import traceback
+                logger.error(f"堆栈信息：{traceback.format_exc()}")
+            finally:
+                # 确保无论是否发生异常，测试文件都会被删除
+                if test_csv and os.path.exists(test_csv):
+                    try:
+                        os.remove(test_csv)
+                        logger.info(f"测试文件 {test_csv} 已删除")
+                    except Exception as e:
+                        logger.warning(f"删除测试文件 {test_csv} 失败：{str(e)}")
+            # 将return语句移到finally块外面
+            return
         
-        return
-    
-    # 解析基金代码列表
-    fund_codes = None
-    if args.funds:
-        fund_codes = args.funds.split(',')
-    
-    # 从命令行参数或环境变量中获取问财查询语句
-    wencai_query = args.wencai
-    if not wencai_query:
-        wencai_query = os.environ.get('WENCAI_QUERY')
-        if wencai_query:
-            logger.info(f"从环境变量获取问财查询语句：{wencai_query}")
-    
-    # 运行分析
-    analyzer.run(days_to_keep=args.days, fund_codes=fund_codes, wencai_query=wencai_query)
+        # 解析基金代码列表
+        fund_codes = None
+        if args.funds:
+            try:
+                fund_codes = args.funds.split(',')
+                logger.info(f"从命令行参数获取基金代码列表：{fund_codes}")
+            except Exception as e:
+                logger.error(f"解析基金代码列表失败：{str(e)}")
+                logger.debug(f"异常详情：{repr(e)}")
+                return
+        
+        # 从命令行参数或环境变量中获取问财查询语句
+        wencai_query = args.wencai
+        if not wencai_query:
+            wencai_query = os.environ.get('WENCAI_QUERY')
+            if wencai_query:
+                logger.info(f"从环境变量获取问财查询语句：{wencai_query}")
+        
+        # 运行分析
+        logger.info("开始运行基金信号分析")
+        analyzer.run(days_to_keep=args.days, fund_codes=fund_codes, wencai_query=wencai_query)
+        
+    except KeyboardInterrupt:
+        logger.info("程序被用户中断")
+        sys.exit(0)
+    except Exception as e:
+        logger.error(f"程序运行失败：{str(e)}")
+        logger.debug(f"异常详情：{repr(e)}")
+        import traceback
+        logger.error(f"堆栈信息：{traceback.format_exc()}")
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
