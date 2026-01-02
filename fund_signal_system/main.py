@@ -602,7 +602,7 @@ def main():
     parser = argparse.ArgumentParser(description='基金信号分析系统')
     parser.add_argument('--days', type=int, default=10, help='保留数据天数')
     parser.add_argument('--funds', type=str, help='基金代码列表，用逗号分隔')
-    parser.add_argument('--wencai', type=str,default='',help='问财选股查询语句，例如：场外基金近1年涨幅top200')
+    parser.add_argument('--wencai', type=str, help='问财选股查询语句，例如：场外基金近1年涨幅top200')
     parser.add_argument('--test-email', action='store_true', help='测试邮件发送')
     args = parser.parse_args()
     
@@ -638,8 +638,15 @@ def main():
     if args.funds:
         fund_codes = args.funds.split(',')
     
+    # 从命令行参数或环境变量中获取问财查询语句
+    wencai_query = args.wencai
+    if not wencai_query:
+        wencai_query = os.environ.get('WENCAI_QUERY')
+        if wencai_query:
+            logger.info(f"从环境变量获取问财查询语句：{wencai_query}")
+    
     # 运行分析
-    analyzer.run(days_to_keep=args.days, fund_codes=fund_codes, wencai_query=args.wencai)
+    analyzer.run(days_to_keep=args.days, fund_codes=fund_codes, wencai_query=wencai_query)
 
 if __name__ == "__main__":
     main()

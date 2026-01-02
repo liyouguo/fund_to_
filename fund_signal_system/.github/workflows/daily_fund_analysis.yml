@@ -42,7 +42,8 @@ jobs:
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           RECIPIENTS: ${{ secrets.RECIPIENTS }}
-        run: |
+          WENCAI_QUERY: ${{ secrets.WENCAI_QUERY }}
+        run:
           python main.py --days ${{ github.event.inputs.days_to_keep || 10 }}
 
       - name: 上传报告文件
