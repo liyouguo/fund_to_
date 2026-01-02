@@ -273,14 +273,6 @@ class FundSignalAnalyzer:
             df['布林带下轨值'] = df['最新净值'] * 0.9
             df['布林带信号'] = '持有'
             
-            # 根据日增长率简单判断信号
-            if '日增长率%' in df.columns:
-                for index, row in df.iterrows():
-                    if row['日增长率%'] > 2:
-                        df.loc[index, '布林带信号'] = '提示风险'
-                    elif row['日增长率%'] < -2:
-                        df.loc[index, '布林带信号'] = '机会买入'
-            
             logger.info(f"基金{fund_code}基础信号生成完成")
             return df
         
@@ -384,7 +376,7 @@ class FundSignalAnalyzer:
         # 只保留信号相关字段
         logger.debug("定义需要保留的字段列表")
         required_columns = [
-            '基金代码', '基金简称', '净值日期',
+            '基金代码', '基金简称', '投资类型', '净值日期',
             '均线信号', 'RSI', 'RSI信号', 'cci值', 'cci信号',
             'macd值', 'macd信号', '布林带下轨值', '布林带中轨值',
             '布林带上轨值', '布林带信号'
