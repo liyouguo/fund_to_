@@ -108,50 +108,7 @@ class FundSignalAnalyzer:
             logger.error(f"堆栈信息：{traceback.format_exc()}")
             return None
     
-    def get_fund_basic_info(self, fund_code="000001"):
-        """获取基金基本信息，使用akshare获取"""
-        logger.debug(f"开始获取基金{fund_code}基本信息")
-        
-        # 使用akshare获取
-        max_retries = 3
-        retry_delay = 2
-        
-        for retry in range(max_retries):
-            try:
-                logger.debug(f"使用akshare获取基金{fund_code}基本信息，第{retry+1}/{max_retries}次尝试")
-                
-                # 尝试直接获取单个基金的基本信息
-                try:
-                    fund_info = ak.fund_open_fund_info_em(symbol=fund_code, indicator="基本信息")
-                    if fund_info is not None and not fund_info.empty:
-                        logger.debug(f"直接获取基金{fund_code}基本信息成功")
-                        if '基金名称' in fund_info.columns and not fund_info['基金名称'].empty:
-                            fund_name = fund_info['基金名称'].iloc[0]
-                            logger.debug(f"基金{fund_code}基本信息获取成功：名称={fund_name}")
-                            return fund_name
-                except Exception as e:
-                    logger.warning(f"直接获取失败，尝试获取所有基金列表：{str(e)}")
-                    
-                # 尝试获取所有基金列表
-                fund_list_df = ak.fund_name_em()
-                logger.debug(f"获取基金列表成功，共{len(fund_list_df)}条记录")
-                
-                fund_info = fund_list_df[fund_list_df['基金代码'] == fund_code]
-                
-                if not fund_info.empty:
-                    fund_name = fund_info.iloc[0]['基金简称']
-                    logger.debug(f"基金{fund_code}基本信息获取成功：名称={fund_name}")
-                    return fund_name
-                logger.warning(f"基金{fund_code}基本信息未找到")
-                return f"基金{fund_code}"
-            except Exception as e:
-                if retry < max_retries - 1:
-                    logger.warning(f"获取基金{fund_code}基本信息失败，{retry_delay}秒后重试：{str(e)}")
-                    time.sleep(retry_delay)
-                    retry_delay *= 2  # 指数退避
-                else:
-                    logger.error(f"获取基金{fund_code}基本信息失败，已重试{max_retries}次：{str(e)}")
-                    return f"基金{fund_code}"
+
     
     def show_progress(self, current, total, start_time, prefix="分析进度"):
         """显示分析进度"""
@@ -204,8 +161,8 @@ class FundSignalAnalyzer:
                 if history_df is not None and not history_df.empty:
                     logger.debug(f"fund_open_fund_info_em获取成功，共{len(history_df)}条记录")
                     
-                    # 获取基金基本信息
-                    fund_name = self.get_fund_basic_info(fund_code)
+                    # 基金简称将从问财返回值获取，这里先使用默认值
+                    fund_name = f"基金{fund_code}"
                     
                     # 添加基金代码和简称
                     history_df['基金代码'] = fund_code
@@ -252,9 +209,9 @@ class FundSignalAnalyzer:
             
             logger.debug(f"基金{fund_code}数据筛选成功，共{len(fund_data)}条记录")
             
-            # 获取基金基本信息
-            logger.debug("获取基金基本信息")
-            fund_name = self.get_fund_basic_info(fund_code)
+            # 基金简称将从问财返回值获取，这里先使用默认值
+            logger.debug("设置基金基本信息")
+            fund_name = f"基金{fund_code}"
             
             # 获取单位净值和累计净值
             # 动态获取最新净值列名
@@ -613,8 +570,9 @@ class FundSignalAnalyzer:
                     signal_df = signal_df[signal_df['净值日期'] >= cutoff_date]
                     signal_df['净值日期'] = signal_df['净值日期'].dt.strftime('%Y-%m-%d')
                 
-                # 从问财数据中添加投资类型
+                # 从问财数据中更新基金简称和投资类型
                 if fund_code in fund_info_dict:
+                    signal_df['基金简称'] = fund_info_dict[fund_code]['fund_name']
                     signal_df['投资类型'] = fund_info_dict[fund_code]['invest_type']
                 
                 # 立即写入信号数据到CSV文件
