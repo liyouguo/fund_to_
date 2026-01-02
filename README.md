@@ -41,15 +41,17 @@
 
 ```
 .
-├── main.py                    # 主程序入口
-├── logger.py                  # 日志记录模块
-├── email_sender.py            # 邮件发送模块
-├── requirements.txt           # 依赖列表
-├── README.md                  # 项目文档
-├── .gitignore                 # Git忽略文件
+├── fund_signal_system/
+│   ├── main.py               # 主程序入口
+│   ├── logger.py             # 日志记录模块
+│   ├── email_sender.py       # 邮件发送模块
+│   ├── requirements.txt      # 依赖列表
+│   └── .gitignore            # Git忽略文件
+├── README.md                 # 项目文档
+├── .gitignore                # Git忽略文件
 └── .github/
     └── workflows/
-        └── daily_fund_analysis.yml  # GitHub Actions配置
+        └── main.yml          # GitHub Actions配置
 ```
 
 ## 安装和运行
@@ -70,32 +72,32 @@ pip install -r requirements.txt
 #### 1. 基本运行
 
 ```bash
-python main.py
+python ./fund_signal_system/main.py
 ```
 
 #### 2. 自定义参数运行
 
 ```bash
 # 保留最近5天的数据
-python main.py --days 5
+python ./fund_signal_system/main.py --days 5
 
 # 分析指定基金
-python main.py --funds "000001,110022,710001"
+python ./fund_signal_system/main.py --funds "000001,110022,710001"
 
 # 使用问财选股（自然语言查询）
-python main.py --wencai "场外基金近1年涨幅top200"
+python ./fund_signal_system/main.py --wencai "场外基金近1年涨幅top200"
 
 # 组合参数
-python main.py --days 7 --wencai "股票型场外基金 近1年涨幅top100"
+python ./fund_signal_system/main.py --days 7 --wencai "股票型场外基金 近1年涨幅top100"
 
 # 使用问财选股并指定保留天数
-python main.py --wencai "场外基金近6个月涨幅top50" --days 10
+python ./fund_signal_system/main.py --wencai "场外基金近6个月涨幅top50" --days 10
 ```
 
 #### 3. 测试邮件发送
 
 ```bash
-python main.py --test-email
+python ./fund_signal_system/main.py --test-email
 ```
 
 ## 环境变量配置 
