@@ -1,0 +1,26 @@
+# 日志目录
+logs/
+
+# 输出目录
+output/
+
+# 虚拟环境
+venv/
+.env/
+
+# 临时文件
+*.pyc
+__pycache__/
+
+# IDE配置
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 操作系统文件
+.DS_Store
+Thumbs.db
+
+# 测试文件（如果不需要提交）
+# test_*.py
