@@ -29,7 +29,67 @@ class FundSignalAnalyzer:
         """初始化基金信号分析器"""
         self.report_date = datetime.now().strftime('%Y-%m-%d')
         self.email_sender = EmailSender()
+        # 基金数据缓存
+        self.fund_data_cache = None
         logger.info(f"初始化基金信号分析器，报告日期：{self.report_date}")
+    
+    def fetch_fund_data_from_api(self):
+        """从外部API获取基金数据并缓存"""
+        if self.fund_data_cache is not None:
+            logger.info("基金数据缓存已存在，直接返回")
+            return self.fund_data_cache
+        
+        url = "https://m.1234567.com.cn/data/FundSuggestList.js"
+        logger.info(f"开始从API获取基金数据：{url}")
+        
+        try:
+            import requests
+            import json
+            
+            response = requests.get(url, timeout=10)
+            logger.info(f"API请求状态码：{response.status_code}")
+            
+            content = response.text
+            logger.info(f"API响应内容长度：{len(content)}")
+            
+            # 提取JSON数据
+            start_idx = content.find("{")
+            end_idx = content.rfind("}")
+            
+            if start_idx != -1 and end_idx != -1:
+                json_str = content[start_idx:end_idx+1]
+                data = json.loads(json_str)
+                
+                if "Datas" in data:
+                    datas = data["Datas"]
+                    logger.info(f"API返回基金数据数量：{len(datas)}")
+                    
+                    # 构建基金字典
+                    fund_dict = {}
+                    for fund in datas:
+                        parts = fund.split("|")
+                        if len(parts) >= 4:
+                            fund_code = parts[0]
+                            fund_name = parts[2]
+                            fund_type = parts[3]
+                            fund_dict[fund_code] = {
+                                "name": fund_name,
+                                "type": fund_type
+                            }
+                    
+                    logger.info(f"基金字典构建完成，共 {len(fund_dict)} 条记录")
+                    self.fund_data_cache = fund_dict
+                    return fund_dict
+            
+        except Exception as e:
+            logger.error(f"从API获取基金数据失败：{str(e)}")
+            logger.error(f"异常类型：{type(e).__name__}")
+            logger.error(f"异常详情：{repr(e)}")
+            import traceback
+            logger.error(f"堆栈信息：{traceback.format_exc()}")
+        
+        logger.warning("从API获取基金数据失败，返回空字典")
+        return {}
     
     def get_funds_from_wencai(self, query_content="场外基金近1年涨幅top200"):
         """使用问财选股获取基金列表"""
@@ -103,30 +163,40 @@ class FundSignalAnalyzer:
             return []
     
     def get_fund_basic_info(self, fund_code="000001"):
-        """获取基金基本信息，带重试机制"""
+        """获取基金基本信息，优先使用API数据"""
+        logger.debug(f"开始获取基金{fund_code}基本信息")
+        
+        # 首先尝试从API缓存中获取
+        fund_dict = self.fetch_fund_data_from_api()
+        if fund_code in fund_dict:
+            fund_info = fund_dict[fund_code]
+            logger.info(f"从API缓存中获取基金{fund_code}基本信息成功：名称={fund_info['name']}, 类型={fund_info['type']}")
+            return fund_info['name'], fund_info['type']
+        
+        logger.warning(f"基金代码{fund_code}不在API缓存中，尝试使用akshare获取")
+        
+        # 备用方案：使用akshare获取
         max_retries = 3
         retry_delay = 2
         
         for retry in range(max_retries):
             try:
-                logger.debug(f"开始获取基金{fund_code}基本信息，第{retry+1}/{max_retries}次尝试")
+                logger.debug(f"使用akshare获取基金{fund_code}基本信息，第{retry+1}/{max_retries}次尝试")
                 
-                # 尝试直接获取单个基金的基本信息，而不是获取所有基金列表
+                # 尝试直接获取单个基金的基本信息
                 try:
-                    # 尝试使用fund_open_fund_info_em获取基金基本信息
                     fund_info = ak.fund_open_fund_info_em(symbol=fund_code, indicator="基本信息")
                     if fund_info is not None and not fund_info.empty:
                         logger.debug(f"直接获取基金{fund_code}基本信息成功")
-                        # 尝试从结果中提取基金名称和类型
                         if '基金名称' in fund_info.columns and not fund_info['基金名称'].empty:
                             fund_name = fund_info['基金名称'].iloc[0]
-                            fund_type = "未知类型"  # 基本信息中可能没有基金类型
+                            fund_type = "未知类型"
                             logger.debug(f"基金{fund_code}基本信息获取成功：名称={fund_name}, 类型={fund_type}")
                             return fund_name, fund_type
                 except Exception as e:
-                    logger.warning(f"直接获取基金{fund_code}基本信息失败，尝试获取所有基金列表：{str(e)}")
+                    logger.warning(f"直接获取失败，尝试获取所有基金列表：{str(e)}")
                     
-                # 备用方案：获取所有基金列表
+                # 尝试获取所有基金列表
                 fund_list_df = ak.fund_name_em()
                 logger.debug(f"获取基金列表成功，共{len(fund_list_df)}条记录")
                 
