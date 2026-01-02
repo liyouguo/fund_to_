@@ -45,6 +45,7 @@ class FundSignalAnalyzer:
         try:
             import requests
             import json
+            import re
             
             response = requests.get(url, timeout=10)
             logger.info(f"API请求状态码：{response.status_code}")
@@ -52,21 +53,20 @@ class FundSignalAnalyzer:
             content = response.text
             logger.info(f"API响应内容长度：{len(content)}")
             
-            # 提取JSON数据
-            start_idx = content.find("{")
-            end_idx = content.rfind("}")
-            
-            if start_idx != -1 and end_idx != -1:
-                json_str = content[start_idx:end_idx+1]
-                data = json.loads(json_str)
+            # 优化：使用正则表达式精确提取Datas数组
+            datas_match = re.search(r'"Datas":\s*(\[[\s\S]*?\])', content)
+            if datas_match:
+                datas_str = datas_match.group(1)
+                logger.info(f"提取的Datas字符串长度：{len(datas_str)}")
                 
-                if "Datas" in data:
-                    datas = data["Datas"]
-                    logger.info(f"API返回基金数据数量：{len(datas)}")
+                try:
+                    # 尝试直接将提取的字符串解析为Python列表
+                    datas_list = json.loads(datas_str)
+                    logger.info(f"API返回基金数据数量：{len(datas_list)}")
                     
                     # 构建基金字典
                     fund_dict = {}
-                    for fund in datas:
+                    for fund in datas_list:
                         parts = fund.split("|")
                         if len(parts) >= 4:
                             fund_code = parts[0]
@@ -78,6 +78,29 @@ class FundSignalAnalyzer:
                             }
                     
                     logger.info(f"基金字典构建完成，共 {len(fund_dict)} 条记录")
+                    self.fund_data_cache = fund_dict
+                    return fund_dict
+                except json.JSONDecodeError as e:
+                    logger.warning(f"直接解析JSON失败：{str(e)}，尝试使用备用方法")
+                    
+                    # 备用方法：直接提取所有基金信息
+                    funds = re.findall(r'"([^"]+)"', datas_str)
+                    logger.info(f"备用方法找到 {len(funds)} 个基金")
+                    
+                    # 构建基金字典
+                    fund_dict = {}
+                    for fund_str in funds:
+                        parts = fund_str.split("|")
+                        if len(parts) >= 4:
+                            fund_code = parts[0]
+                            fund_name = parts[2]
+                            fund_type = parts[3]
+                            fund_dict[fund_code] = {
+                                "name": fund_name,
+                                "type": fund_type
+                            }
+                    
+                    logger.info(f"备用方法基金字典构建完成，共 {len(fund_dict)} 条记录")
                     self.fund_data_cache = fund_dict
                     return fund_dict
             
