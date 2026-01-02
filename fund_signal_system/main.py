@@ -38,10 +38,6 @@ class FundSignalAnalyzer:
         logger.info(f"开始使用问财选股获取基金列表，查询条件：{query_content}")
         
         try:
-            # 导入必要的库
-            import pywencai
-            import pandas as pd
-            
             # 自动翻页查询场外基金数据
             logger.info("调用pywencai.get()函数获取数据...")
             fund_data = pywencai.get(
@@ -177,7 +173,6 @@ class FundSignalAnalyzer:
                 fund_code = base_code
             
             # 尝试使用fund_open_fund_info_em获取历史数据
-            logger.debug(f"尝试使用fund_open_fund_info_em获取基金{fund_code}历史数据")
             try:
                 # 获取基金历史数据，带重试机制
                 def get_history_data():
@@ -186,8 +181,6 @@ class FundSignalAnalyzer:
                 history_df = retry_api_call(get_history_data, max_retries=3, base_delay=1)
                 
                 if history_df is not None and not history_df.empty:
-                    logger.debug(f"fund_open_fund_info_em获取成功，共{len(history_df)}条记录")
-                    
                     # 基金简称将从问财返回值获取，这里先使用默认值
                     fund_name = f"基金{fund_code}"
                     
@@ -205,17 +198,12 @@ class FundSignalAnalyzer:
                     history_df['日增长率%'] = pd.to_numeric(history_df['日增长率%'], errors='coerce')
                     
                     logger.info(f"基金{fund_code}历史数据获取成功，共{len(history_df)}条记录")
-                    logger.debug(f"最终数据字段：{list(history_df.columns)}")
-                    
                     return history_df
             except Exception as e:
                 logger.error(f"使用fund_open_fund_info_em获取基金{fund_code}历史数据失败：{str(e)}")
-                logger.debug(f"异常详情：{repr(e)}")
-                logger.warning(f"基金{fund_code}遇到JavaScript解析错误，这可能是由于网页结构变化导致的，尝试使用备选方案")
+                logger.warning(f"基金{fund_code}遇到JavaScript解析错误，尝试使用备选方案")
             
             # 备选方案：使用fund_open_fund_daily_em获取当日数据
-            logger.debug(f"调用akshare获取所有开放基金每日数据")
-            
             def get_daily_data():
                 return ak.fund_open_fund_daily_em()
             
@@ -225,22 +213,15 @@ class FundSignalAnalyzer:
                 logger.warning(f"基金数据返回为空")
                 return None
             
-            logger.debug(f"原始数据获取成功，共{len(df)}条记录")
-            logger.debug(f"原始数据字段：{list(df.columns)}")
-            
             # 筛选当前基金的数据
             fund_data = df[df['基金代码'] == fund_code]
             if fund_data.empty:
                 logger.warning(f"未找到基金{fund_code}的数据")
                 return None
             
-            logger.debug(f"基金{fund_code}数据筛选成功，共{len(fund_data)}条记录")
-            
             # 基金简称将从问财返回值获取，这里先使用默认值
-            logger.debug("设置基金基本信息")
             fund_name = f"基金{fund_code}"
             
-            # 获取单位净值和累计净值
             # 动态获取最新净值列名
             unit_nav_col = [col for col in df.columns if '-单位净值' in col][0]
             unit_nav = fund_data.iloc[0][unit_nav_col]
@@ -250,7 +231,6 @@ class FundSignalAnalyzer:
             latest_date = unit_nav_col.split('-')[0]
             
             # 创建历史数据结构
-            logger.debug("创建历史数据结构")
             history_data = pd.DataFrame({
                 '净值日期': [pd.Timestamp(latest_date)],
                 '最新净值': [float(unit_nav)],
@@ -260,15 +240,10 @@ class FundSignalAnalyzer:
             })
             
             logger.info(f"基金{fund_code}数据获取成功，共{len(history_data)}条记录")
-            logger.debug(f"最终数据字段：{list(history_data.columns)}")
-            
             return history_data
             
         except Exception as e:
-            error_msg = str(e)
-            logger.error(f"获取基金{fund_code}历史数据失败：{error_msg}")
-            logger.debug(f"异常详情：{repr(e)}")
-            
+            logger.error(f"获取基金{fund_code}历史数据失败：{str(e)}")
             return None
     
     def calculate_technical_indicators(self, df):
@@ -313,12 +288,8 @@ class FundSignalAnalyzer:
         logger.debug("数据足够，计算完整技术指标")
         
         # 计算移动平均线和均线信号
-        logger.debug("计算移动平均线指标")
         df['MA5'] = df['最新净值'].rolling(window=5, min_periods=1).mean()
         df['MA10'] = df['最新净值'].rolling(window=10, min_periods=1).mean()
-        logger.debug("MA5和MA10计算完成")
-        
-        logger.debug("生成均线信号")
         df['均线信号'] = '持有'
         buy_signals = (df['MA5'] > df['MA10']) & (df['MA5'].shift(1) <= df['MA10'].shift(1))
         sell_signals = (df['MA5'] < df['MA10']) & (df['MA5'].shift(1) >= df['MA10'].shift(1))
@@ -327,16 +298,12 @@ class FundSignalAnalyzer:
         logger.info(f"均线信号生成完成：买入信号{buy_signals.sum()}个，卖出信号{sell_signals.sum()}个")
         
         # 计算RSI和RSI信号
-        logger.debug("计算RSI指标")
         delta = df['最新净值'].diff()
         gain = (delta.where(delta > 0, 0)).rolling(window=14, min_periods=1).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(window=14, min_periods=1).mean()
         rs = gain / loss
         df['RSI'] = (100 - (100 / (1 + rs))).round(2)
         df['RSI'] = df['RSI'].fillna(50)
-        logger.debug(f"RSI计算完成，当前值：{df['RSI'].iloc[-1]}")
-        
-        logger.debug("生成RSI信号")
         df['RSI信号'] = '持有'
         rsi_buy = (df['RSI'] > 30) & (df['RSI'].shift(1) <= 30)
         rsi_sell = (df['RSI'] < 70) & (df['RSI'].shift(1) >= 70)
@@ -345,14 +312,10 @@ class FundSignalAnalyzer:
         logger.info(f"RSI信号生成完成：买入信号{rsi_buy.sum()}个，卖出信号{rsi_sell.sum()}个")
         
         # 计算MACD和MACD信号
-        logger.debug("计算MACD指标")
         exp1 = df['最新净值'].ewm(span=12, adjust=False).mean()
         exp2 = df['最新净值'].ewm(span=26, adjust=False).mean()
         df['MACD'] = (exp1 - exp2).round(4)
         df['MACD_signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
-        logger.debug(f"MACD计算完成，当前值：{df['MACD'].iloc[-1]}")
-        
-        logger.debug("生成MACD信号")
         df['macd值'] = df['MACD']
         df['macd信号'] = '持有'
         macd_buy = (df['MACD'] > -100) & (df['MACD'].shift(1) <= -100)
@@ -362,15 +325,11 @@ class FundSignalAnalyzer:
         logger.info(f"MACD信号生成完成：买入信号{macd_buy.sum()}个，卖出信号{macd_sell.sum()}个")
         
         # 计算CCI和CCI信号
-        logger.debug("计算CCI指标")
         tp = df['最新净值']
         tp_ma = tp.rolling(window=20, min_periods=1).mean()
         md = tp.rolling(window=20, min_periods=1).apply(lambda x: np.mean(np.abs(x - np.mean(x))))
         df['cci值'] = ((tp - tp_ma) / (0.015 * md)).round(2)
         df['cci值'] = df['cci值'].fillna(0)
-        logger.debug(f"CCI计算完成，当前值：{df['cci值'].iloc[-1]}")
-        
-        logger.debug("生成CCI信号")
         df['cci信号'] = '持有'
         cci_buy = (df['cci值'] > -100) & (df['cci值'].shift(1) <= -100)
         cci_sell = (df['cci值'] < 100) & (df['cci值'].shift(1) >= 100)
@@ -379,14 +338,10 @@ class FundSignalAnalyzer:
         logger.info(f"CCI信号生成完成：买入信号{cci_buy.sum()}个，卖出信号{cci_sell.sum()}个")
         
         # 计算布林带和布林带信号
-        logger.debug("计算布林带指标")
         df['布林带中轨值'] = df['最新净值'].rolling(window=20, min_periods=1).mean()
         bb_std = df['最新净值'].rolling(window=20, min_periods=1).std()
         df['布林带上轨值'] = (df['布林带中轨值'] + 2 * bb_std).round(4)
         df['布林带下轨值'] = (df['布林带中轨值'] - 2 * bb_std).round(4)
-        logger.debug(f"布林带计算完成，当前中轨：{df['布林带中轨值'].iloc[-1]}")
-        
-        logger.debug("生成布林带信号")
         df['布林带信号'] = '持有'
         bb_buy_opp = df['最新净值'] < df['布林带下轨值']
         bb_risk = df['最新净值'] > df['布林带上轨值']
@@ -402,7 +357,6 @@ class FundSignalAnalyzer:
         logger.info(f"穿越买入{bb_cross_buy.sum()}个，穿越卖出{bb_cross_sell.sum()}个")
         
         # 记录最终信号分布
-        logger.debug("记录最终信号分布")
         if '净值日期' in df.columns:
             latest_date = df['净值日期'].max().strftime('%Y-%m-%d')
             latest_df = df[df['净值日期'] == df['净值日期'].max()]
@@ -564,12 +518,9 @@ class FundSignalAnalyzer:
                 signal_df = result['signal_data'].copy()
                 
                 if '净值日期' in signal_df.columns:
-                    logger.debug(f"过滤基金{fund_code}近{days_to_keep}天的数据")
                     signal_df['净值日期'] = pd.to_datetime(signal_df['净值日期'])
                     max_date = signal_df['净值日期'].max()
                     cutoff_date = max_date - pd.Timedelta(days=days_to_keep)
-                    logger.debug(f"最大日期：{max_date.strftime('%Y-%m-%d')}，截止日期：{cutoff_date.strftime('%Y-%m-%d')}")
-                    
                     filtered_count = len(signal_df[signal_df['净值日期'] >= cutoff_date])
                     logger.info(f"基金{fund_code}数据过滤：{filtered_count}/{len(signal_df)}条记录保留")
                     
