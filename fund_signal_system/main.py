@@ -92,7 +92,34 @@ class FundSignalAnalyzer:
                 # 确保去掉".OF"后缀，兼容带完整格式的基金代码
                 fund_data['基金代码'] = fund_data[fund_code_col].astype(str).str.split('.').str[0]
                 
+                # 查找并添加基金简称
+                fund_name_cols = [col for col in fund_data.columns if '简称' in col or '名称' in col]
+                if fund_name_cols:
+                    fund_name_col = fund_name_cols[0]
+                    # 将基金简称列重命名为统一的'基金简称'
+                    if fund_name_col != '基金简称':
+                        fund_data.rename(columns={fund_name_col: '基金简称'}, inplace=True)
+                    logger.info(f"使用 {fund_name_col} 作为基金简称列")
+                else:
+                    logger.warning("问财返回数据中未找到基金简称相关字段")
+                    # 添加默认的基金简称
+                    fund_data['基金简称'] = fund_data['基金代码'].apply(lambda x: f"基金{x}")
+                
+                # 查找并添加投资类型
+                invest_type_cols = [col for col in fund_data.columns if '投资类型' in col or '类型' in col]
+                if invest_type_cols:
+                    invest_type_col = invest_type_cols[0]
+                    # 将投资类型列重命名为统一的'投资类型'
+                    if invest_type_col != '投资类型':
+                        fund_data.rename(columns={invest_type_col: '投资类型'}, inplace=True)
+                    logger.info(f"使用 {invest_type_col} 作为投资类型列")
+                else:
+                    logger.warning("问财返回数据中未找到投资类型相关字段")
+                    # 添加默认的投资类型
+                    fund_data['投资类型'] = "未知类型"
+                
                 logger.info(f"获取到基金数据：{list(fund_data['基金代码'])[:10]}...(共{len(fund_data)}个)")
+                logger.info(f"基金数据包含字段：{list(fund_data.columns)}")
                 return fund_data
             else:
                 logger.error(f"问财返回的不是DataFrame，而是 {type(fund_data)}")
@@ -480,36 +507,15 @@ class FundSignalAnalyzer:
         logger.info(f"保留天数：{days_to_keep}")
         logger.info("=" * 80)
         
-        # 初始化基金信息字典
-        fund_info_dict = {}
+        # 初始化问财基金数据
+        wencai_fund_data = None
         
         # 使用问财选股获取基金列表和详细信息
         if wencai_query:
             wencai_fund_data = self.get_funds_from_wencai(wencai_query)
             if wencai_fund_data is not None:
-                # 从问财返回的数据中提取基金代码、基金简称和投资类型
-                logger.info(f"从问财数据中提取基金信息...")
-                for _, row in wencai_fund_data.iterrows():
-                    fund_code = row['基金代码']
-                    # 查找基金简称列
-                    fund_name_cols = [col for col in wencai_fund_data.columns if '简称' in col or '名称' in col]
-                    if fund_name_cols:
-                        fund_name_col = fund_name_cols[0]
-                        fund_name = row[fund_name_col]
-                    else:
-                        fund_name = f"基金{fund_code}"
-                    # 查找投资类型列
-                    invest_type_cols = [col for col in wencai_fund_data.columns if '投资类型' in col or '类型' in col]
-                    if invest_type_cols:
-                        invest_type_col = invest_type_cols[0]
-                        invest_type = row[invest_type_col]
-                    else:
-                        invest_type = "未知类型"
-                    fund_info_dict[fund_code] = {
-                        'fund_name': fund_name,
-                        'invest_type': invest_type
-                    }
-                fund_codes = list(fund_info_dict.keys())
+                # 从问财数据中获取基金代码列表
+                fund_codes = wencai_fund_data['基金代码'].tolist()
                 logger.info(f"从问财获取到 {len(fund_codes)} 个基金")
             else:
                 logger.error("问财选股未返回有效基金列表，使用默认基金列表")
@@ -571,9 +577,20 @@ class FundSignalAnalyzer:
                     signal_df['净值日期'] = signal_df['净值日期'].dt.strftime('%Y-%m-%d')
                 
                 # 从问财数据中更新基金简称和投资类型
-                if fund_code in fund_info_dict:
-                    signal_df['基金简称'] = fund_info_dict[fund_code]['fund_name']
-                    signal_df['投资类型'] = fund_info_dict[fund_code]['invest_type']
+                if wencai_fund_data is not None:
+                    # 查找当前基金在问财数据中的信息
+                    fund_info = wencai_fund_data[wencai_fund_data['基金代码'] == fund_code]
+                    if not fund_info.empty:
+                        # 更新基金简称
+                        fund_name = fund_info['基金简称'].iloc[0]
+                        signal_df['基金简称'] = fund_name
+                        logger.info(f"更新基金{fund_code}简称为：{fund_name}")
+                        
+                        # 更新投资类型
+                        if '投资类型' in fund_info.columns:
+                            invest_type = fund_info['投资类型'].iloc[0]
+                            signal_df['投资类型'] = invest_type
+                            logger.info(f"更新基金{fund_code}投资类型为：{invest_type}")
                 
                 # 立即写入信号数据到CSV文件
                 logger.info(f"开始写入基金{fund_code}信号数据到CSV文件")
