@@ -569,7 +569,7 @@ class FundSignalAnalyzer:
             
             # 避免请求过快，使用2-3秒的随机间隔
             import random
-            sleep_time = random.uniform(1, 3)
+            sleep_time = random.uniform(1, 2.5)
             logger.debug(f"等待{sleep_time:.2f}秒，避免API请求过快")
             time.sleep(sleep_time)
         
